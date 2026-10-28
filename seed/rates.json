@@ -1,0 +1,93 @@
+[
+  {
+    "fee_key": "調剤基本料1",
+    "category": "basic",
+    "points": 47,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "調剤基本料2",
+    "category": "basic",
+    "points": 30,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "調剤基本料3イ",
+    "category": "basic",
+    "points": 25,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "調剤基本料3ロ",
+    "category": "basic",
+    "points": 20,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "調剤基本料3ハ",
+    "category": "basic",
+    "points": 37,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "特別調剤基本料A",
+    "category": "basic",
+    "points": 5,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "1",
+    "category": "regional",
+    "points": 27,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "2",
+    "category": "regional",
+    "points": 59,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "3",
+    "category": "regional",
+    "points": 67,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "4",
+    "category": "regional",
+    "points": 37,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "5",
+    "category": "regional",
+    "points": 59,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "cooperation",
+    "category": "cooperation",
+    "points": 5,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  },
+  {
+    "fee_key": "digital",
+    "category": "digital",
+    "points": 8,
+    "valid_from": "2026-06-01",
+    "source_url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=31"
+  }
+]
