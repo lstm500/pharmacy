@@ -28,7 +28,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-BUILD = '6.0'
+BUILD = '6.1'
 JST = timezone(timedelta(hours=9))
 GOV = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/kijyun.html'
 STATION_API = 'https://express.heartrails.com/api/json'
@@ -97,36 +97,77 @@ class SupabaseStore:
             error=DatabaseError(messages.get(e.code,f'Supabaseとの通信でHTTP {e.code}が発生しました。'));error.http_status=e.code
             raise error from None
         except (urllib.error.URLError,TimeoutError,OSError,ValueError): raise DatabaseError('Supabaseとの通信に失敗しました。保存完了とは扱わず停止します。') from None
-    def all_rows(self,table,order,filters=None):
+    def all_rows(self,table,order,filters=None,select='*'):
         if not re.fullmatch(r'(shinagawa|pharmacy)_[a-z_]+',table): raise ValueError('Unexpected table')
         rows=[]; offset=0
         while True:
-            q={'select':'*','order':order,'limit':PAGE_SIZE,'offset':offset,**(filters or {})}
+            q={'select':select,'order':order,'limit':PAGE_SIZE,'offset':offset,**(filters or {})}
             page=self._request(table,query=q)
             if not isinstance(page,list): raise DatabaseError('Supabaseの応答形式が不正です。')
             rows.extend(page)
-            if not page: return rows
+            if len(page)<PAGE_SIZE:return rows
             offset+=len(page)
-    def read_dataset(self):
-        ps=self.all_rows(PREFIX+'pharmacies','code.asc')
-        rs=self.all_rows(PREFIX+'fee_registrations','pharmacy_code.asc,fee_name.asc')
-        ss=self.all_rows(PREFIX+'stations','name.asc')
+    def read_catalog(self):
+        """Small initial request: fees, metadata and per-region counts, not all pharmacies."""
         rates=self.all_rows(PREFIX+'fee_rates','fee_key.asc')
-        ms=self.all_rows(PREFIX+'dataset_info','id.asc')
-        by={}
-        for r in rs: by.setdefault(r['pharmacy_code'],[]).append({'name':r['fee_name'],'abbr':r['abbreviation'],'start':r['start_label']})
-        pharmacies=[]
-        for r in ps:
-            item=copy.deepcopy(r['payload'])
-            item.update(code=r['code'],name=r['name'],address=r['address'],lat=r['latitude'],lon=r['longitude'],registrations=by.get(r['code'],[]),snapshotDate=str(r['snapshot_date']))
-            item['region']=region_of(item['address']); pharmacies.append(item)
-        stations=[{'name':r['name'],'lat':r['latitude'],'lon':r['longitude'],'lines':r['lines'],'major':r['major']} for r in ss]
-        metadata=next((r['metadata'] for r in ms if r['id']=='current'),{})
+        metadata_rows=self.all_rows(PREFIX+'dataset_info','id.asc')
+        statuses=self.all_rows('pharmacy_region_status','region.asc')
+        if statuses:
+            counts={r['region']:int(r['count']) for r in statuses if r.get('region') in REGIONS and int(r.get('count') or 0)>0}
+            regions=[r for r in REGIONS if r in counts]
+            total=sum(counts.values())
+        else:
+            # Support older databases that have pharmacies but no regional status records.
+            addresses=self.all_rows(PREFIX+'pharmacies','code.asc',select='address')
+            regions=[r for r in REGIONS if any(region_of(x['address'])==r for x in addresses)]
+            total=len(addresses)
         app_rates={'basic':{},'regional':{}}
         for r in rates:
-            if r['category'] in ('basic','regional'): app_rates[r['category']][r['fee_key']]=float(r['points'])
-            else: app_rates[r['category']]=float(r['points'])
-        return {'pharmacies':pharmacies,'stations':stations,'rates':app_rates,'metadata':metadata,'rateRows':rates}
+            if r['category'] in ('basic','regional'):app_rates[r['category']][r['fee_key']]=float(r['points'])
+            else:app_rates[r['category']]=float(r['points'])
+        return {'rates':app_rates,'metadata':next((r['metadata'] for r in metadata_rows if r['id']=='current'),{}),
+                'rateRows':rates,'regions':regions,'total_count':total}
+
+    def read_dataset(self,region=None,catalog=None):
+        """Read only the chosen region. Pharmacy payload contains the atomic registration snapshot."""
+        if region is not None and region not in REGIONS:raise ValueError('Unknown region')
+        where={'payload->>region':'eq.'+region} if region else None
+        ps=self.all_rows(PREFIX+'pharmacies','code.asc',where)
+        if region and not ps:
+            # Compatibility with imported rows written before payload.region existed.
+            ps=[r for r in self.all_rows(PREFIX+'pharmacies','code.asc',{'address':'like.*'+region+'*'}) if region_of(r['address'])==region]
+        pharmacies=[];missing=[]
+        for r in ps:
+            item=copy.deepcopy(r['payload'])
+            if not isinstance(item.get('registrations'),list):missing.append(r['code']);item['registrations']=[]
+            item.update(code=r['code'],name=r['name'],address=r['address'],lat=r['latitude'],lon=r['longitude'],snapshotDate=str(r['snapshot_date']))
+            item['region']=region_of(item['address']);pharmacies.append(item)
+        if missing:
+            # Legacy rows only: normal records already contain registrations in payload.
+            registrations={}
+            for i in range(0,len(missing),150):
+                filt={'pharmacy_code':'in.('+','.join(missing[i:i+150])+')'}
+                for r in self.all_rows(PREFIX+'fee_registrations','pharmacy_code.asc,fee_name.asc',filt):
+                    registrations.setdefault(r['pharmacy_code'],[]).append({'name':r['fee_name'],'abbr':r['abbreviation'],'start':r['start_label']})
+            for p in pharmacies:
+                if p['code'] in missing:p['registrations']=registrations.get(p['code'],[])
+        station_filter=None
+        if region:
+            located=[p for p in pharmacies if isinstance(p.get('lat'),(int,float)) and isinstance(p.get('lon'),(int,float))]
+            if located:
+                station_filter={
+                    'latitude':'gte.'+str(min(p['lat'] for p in located)-.025),
+                    'longitude':'gte.'+str(min(p['lon'] for p in located)-.035)}
+                max_lat=max(p['lat'] for p in located)+.025
+                max_lon=max(p['lon'] for p in located)+.035
+                # PostgREST supports the `and=(...)` syntax for upper bounds.
+                station_filter['and']='(latitude.lte.'+str(max_lat)+',longitude.lte.'+str(max_lon)+')'
+            else:station_filter={'name':'eq.__no_stations__'}
+        ss=self.all_rows(PREFIX+'stations','name.asc',station_filter)
+        stations=[{'name':r['name'],'lat':r['latitude'],'lon':r['longitude'],'lines':r['lines'],'major':r['major']} for r in ss]
+        if catalog is None:catalog=self.read_catalog()
+        return {'pharmacies':pharmacies,'stations':stations,'rates':copy.deepcopy(catalog['rates']),
+                'metadata':copy.deepcopy(catalog['metadata']),'rateRows':copy.deepcopy(catalog['rateRows'])}
     def job(self):
         rows=self._request('pharmacy_update_jobs',query={'id':'eq.current','select':'*'})
         return rows[0] if rows else None
@@ -432,7 +473,7 @@ class WorkLog:
     def __init__(self, config, *, path=None, start=True):
         self.path=str(path or (Path(tempfile.gettempdir())/('pharmacy-worklog-'+digest(config.get('url',''))[:20]+'.sqlite3')))
         self.redactions=tuple(x for x in (config.get('secret_key'),) if x)
-        self.lock=threading.RLock();self.local=threading.local();self.sink=None
+        self.lock=threading.RLock();self.local=threading.local();self.sink=None;self.sample_counts={}
         self.storage_error='';self.upload_error='';self.last_uploaded_at='';self.stop=threading.Event();self.last_failure=0
         with self.connect() as db:
             db.execute('PRAGMA journal_mode=WAL')
@@ -458,6 +499,11 @@ class WorkLog:
         return self.clean(str(value),depth+1)
     def context(self,**values):self.local.context=self.clean(values)
     def record(self,category,action,status='ok',detail='',*,duration_ms=0,started_at=None,context=None,run_id=None,event_id=None,source='server',ended_at=None):
+        # Detailed per-pharmacy success diagnostics are sampled (errors stay exhaustive).
+        if category=='collection' and status=='ok' and action in {'pharmacy.prepare','coordinate.lookup','http.fetch'}:
+            with self.lock:
+                self.sample_counts[action]=self.sample_counts.get(action,0)+1
+                if self.sample_counts[action]%25!=1:return None
         end=ended_at or now();start=started_at or end
         category=category if category in LOG_CATEGORIES else 'system'
         status=status if isinstance(status,str) and status in LOG_STATUSES else 'info'
@@ -710,7 +756,6 @@ def browser_log_changed():
     value=st.session_state.get('comparison_map')
     if not isinstance(value,dict):return
     if value.get('type')=='pharmacy.need_document':
-        st.session_state['_component_sent_doc']=None
         return
     audit=st.session_state.get('_work_log')
     if not audit:return
@@ -720,18 +765,19 @@ def browser_log_changed():
 
 
 @st.fragment
+
 def render_comparison(document_id,audit):
     began=time.perf_counter()
-    send_document=st.session_state.get('_component_sent_doc')!=document_id
-    doc=st.session_state.get('_prepared_map_html') if send_document else None
+    # Full HTML is available on every component mount. The JS bridge only updates
+    # the inner frame when document_id changes, so log ACKs never reset the map.
+    doc=st.session_state.get('_prepared_map_html')
     project=digest(st.session_state.get('_log_project',''))[:16]
     server_session=st.session_state.get('_log_session','')
     comparison_component()(html=doc,project=project,document_id=document_id,
         metadata={'server_session':server_session,'document_id':document_id},
         ack=st.session_state.get('_browser_log_ack',[]),key='comparison_map',default=None,on_change=browser_log_changed)
-    st.session_state['_component_sent_doc']=document_id
-    if audit:audit.record('ui','component.transfer','ok','比較画面の差分送信',duration_ms=(time.perf_counter()-began)*1000,
-        context={'document_id':document_id,'html_bytes':len(doc.encode()) if doc else 0,'full_document':send_document})
+    if audit:audit.record('ui','component.transfer','ok','比較画面を転送',duration_ms=(time.perf_counter()-began)*1000,
+        context={'document_id':document_id,'html_bytes':len(doc.encode()) if doc else 0,'full_document':True})
 
 # ── 埋込画面資産（外部py・uiフォルダ不要） ──
 COMPONENT_SHELL = r"""<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:100%;overflow:hidden}iframe{display:block;width:100%;height:950px;border:0}</style></head><body><iframe id="content" title="薬局比較" allow="geolocation" sandbox="allow-scripts allow-same-origin allow-popups allow-downloads allow-forms"></iframe><script>
@@ -782,7 +828,7 @@ window.installPharmacyMonitor=function({scope,project,emitTransport,root=documen
   support.layout_shift=observe('layout-shift',e=>{if(e.value>=.01)log('performance.layout_shift','info','画面内の配置が移動',0,{layout_shift:e.value,recent_input:e.hadRecentInput,trace_id:active?.id||''});});
   observe('resource',e=>{if(e.initiatorType==='img'||e.duration<200)return;let u;try{u=new URL(e.name);}catch{return;}log('network.resource','info','遅いリソースの読み込み',e.duration,{host:u.hostname,resource_type:e.initiatorType,transfer_bytes:e.transferSize,ttfb_ms:round(Math.max(0,e.responseStart-e.requestStart)),download_ms:round(e.responseEnd-e.responseStart),timing_restricted:e.responseStart===0});});
  }
- let lastTick=clock(),lagMax=0,lagCount=0,ticks=0;setInterval(()=>{const n=clock(),lag=n-lastTick-1000;lastTick=n;if(isVisible()){lagMax=Math.max(lagMax,lag);if(lag>100)lagCount++;}if(++ticks%10===0){if(lagCount)log('performance.event_loop','warning','操作を妨げる処理待ちを検出',lagMax,{count:lagCount,duration_kind:'max_timer_delay_in_10s'});lagMax=lagCount=0;flush();}if(active&&n-active.start>15000)finish(document.hidden?'hidden':'timeout');},1000);
+ let lastTick=clock(),lagMax=0,lagCount=0,ticks=0;setInterval(()=>{const n=clock(),lag=n-lastTick-1000;lastTick=n;if(isVisible()){lagMax=Math.max(lagMax,lag);if(lag>100)lagCount++;}if(++ticks%45===0){if(lagCount)log('performance.event_loop','warning','操作を妨げる処理待ちを検出',lagMax,{count:lagCount,duration_kind:'max_timer_delay_in_10s'});lagMax=lagCount=0;flush();}if(active&&n-active.start>15000)finish(document.hidden?'hidden':'timeout');},1000);
  document.addEventListener('visibilitychange',()=>{lastTick=clock();if(document.hidden){finish('hidden');persist();flush();}});addEventListener('pagehide',()=>{finish('pagehide');persist();flush();});
  log('performance.capabilities','info','端末と計測APIの対応状況',0,{...support,hardware_concurrency:navigator.hardwareConcurrency||null,device_memory_gb:navigator.deviceMemory||null,connection_type:navigator.connection?.effectiveType||'unavailable',rtt_ms:navigator.connection?.rtt??null,downlink_mbps:navigator.connection?.downlink??null,save_data:navigator.connection?.saveData??null});
  setTimeout(flush,1000);
@@ -799,7 +845,7 @@ addEventListener('message',event=>{
   if(!monitor){try{monitor=installPharmacyMonitor({scope:'app',project:a.project||'default',root:parent.document,emitTransport:transport,extra:()=>metadata});
    parent.document.addEventListener('click',()=>{frame.contentWindow?.postMessage({type:'pharmacy.worklog.flush'},'*');},true);
   }catch{monitor=installPharmacyMonitor({scope:'component',project:a.project||'default',emitTransport:transport,extra:()=>metadata});monitor.log('performance.outer_unavailable','warning','アプリ外枠はブラウザー制約で計測できません');}}
-  if(typeof a.html==='string'&&a.html!==previous){previous=a.html||'';documentStart=performance.now();monitor.hold();docID=a.document_id||'';frame.srcdoc=previous;}
+  if(typeof a.html==='string'&&(docID!==a.document_id||!previous)){previous=a.html||'';documentStart=performance.now();monitor.hold();docID=a.document_id||'';frame.srcdoc=previous;}
   if((!previous||docID!==a.document_id)&&typeof a.html!=='string')send('streamlit:setComponentValue',{value:{type:'pharmacy.need_document',request_id:Date.now()}});
   lastAck=a.ack||[];monitor.ack(lastAck);frame.contentWindow?.postMessage({type:'pharmacy.worklog.ack',ids:lastAck},'*');
   send('streamlit:setFrameHeight',{height:950});
@@ -859,7 +905,7 @@ window.installPharmacyMonitor=function({scope,project,emitTransport,root=documen
   support.layout_shift=observe('layout-shift',e=>{if(e.value>=.01)log('performance.layout_shift','info','画面内の配置が移動',0,{layout_shift:e.value,recent_input:e.hadRecentInput,trace_id:active?.id||''});});
   observe('resource',e=>{if(e.initiatorType==='img'||e.duration<200)return;let u;try{u=new URL(e.name);}catch{return;}log('network.resource','info','遅いリソースの読み込み',e.duration,{host:u.hostname,resource_type:e.initiatorType,transfer_bytes:e.transferSize,ttfb_ms:round(Math.max(0,e.responseStart-e.requestStart)),download_ms:round(e.responseEnd-e.responseStart),timing_restricted:e.responseStart===0});});
  }
- let lastTick=clock(),lagMax=0,lagCount=0,ticks=0;setInterval(()=>{const n=clock(),lag=n-lastTick-1000;lastTick=n;if(isVisible()){lagMax=Math.max(lagMax,lag);if(lag>100)lagCount++;}if(++ticks%10===0){if(lagCount)log('performance.event_loop','warning','操作を妨げる処理待ちを検出',lagMax,{count:lagCount,duration_kind:'max_timer_delay_in_10s'});lagMax=lagCount=0;flush();}if(active&&n-active.start>15000)finish(document.hidden?'hidden':'timeout');},1000);
+ let lastTick=clock(),lagMax=0,lagCount=0,ticks=0;setInterval(()=>{const n=clock(),lag=n-lastTick-1000;lastTick=n;if(isVisible()){lagMax=Math.max(lagMax,lag);if(lag>100)lagCount++;}if(++ticks%45===0){if(lagCount)log('performance.event_loop','warning','操作を妨げる処理待ちを検出',lagMax,{count:lagCount,duration_kind:'max_timer_delay_in_10s'});lagMax=lagCount=0;flush();}if(active&&n-active.start>15000)finish(document.hidden?'hidden':'timeout');},1000);
  document.addEventListener('visibilitychange',()=>{lastTick=clock();if(document.hidden){finish('hidden');persist();flush();}});addEventListener('pagehide',()=>{finish('pagehide');persist();flush();});
  log('performance.capabilities','info','端末と計測APIの対応状況',0,{...support,hardware_concurrency:navigator.hardwareConcurrency||null,device_memory_gb:navigator.deviceMemory||null,connection_type:navigator.connection?.effectiveType||'unavailable',rtt_ms:navigator.connection?.rtt??null,downlink_mbps:navigator.connection?.downlink??null,save_data:navigator.connection?.saveData??null});
  setTimeout(flush,1000);
@@ -1094,7 +1140,11 @@ DEFAULT_RATES = [{'fee_key': '調剤基本料1', 'category': 'basic', 'points': 
 @st.cache_data(show_spinner=False,max_entries=8)
 def build_document(dataset,root=None):
     d=copy.deepcopy(dataset)
-    d['boundaries']=json.loads(gzip.decompress(base64.b64decode(BOUNDARIES_GZ)))
+    boundaries=json.loads(gzip.decompress(base64.b64decode(BOUNDARIES_GZ)))
+    scope=d.get('viewRegion','保存済みの全地域')
+    if scope in REGIONS:
+        boundaries={**boundaries,'features':[f for f in boundaries['features'] if f.get('properties',{}).get('name')==scope]}
+    d['boundaries']=boundaries
     for p in d['pharmacies']:
         for field in ('website','officialFeesUrl'):
             if field in p:p[field]=valid_http_url(p[field])
@@ -1108,14 +1158,20 @@ def build_document(dataset,root=None):
     document=document.replace('@@REGION@@',html_lib.escape(label))
     return document
 
-@st.cache_data(ttl=300,show_spinner=False)
-def read_data(url,auth_id,_secret_key,_audit=None):
+@st.cache_data(ttl=1800,show_spinner=False)
+def read_catalog(url,auth_id,_secret_key,_audit=None):
     store=SupabaseStore(url,_secret_key);store.audit=_audit
-    return store.read_dataset()
+    return store.read_catalog()
+
+@st.cache_data(ttl=1800,show_spinner=False)
+def read_data(url,auth_id,_secret_key,region=None,_catalog=None,_audit=None):
+    store=SupabaseStore(url,_secret_key);store.audit=_audit
+    return store.read_dataset(region,catalog=_catalog)
 
 def invalidate_dataset():
     st.session_state.pop('_dataset_snapshot',None)
     read_data.clear()
+    read_catalog.clear()
 
 @st.fragment(run_every='3s')
 def update_status(config):
@@ -1152,7 +1208,6 @@ def update_status(config):
         except DatabaseError as e:st.error(str(e))
     if st.button('更新結果を地図へ反映',key='apply_update'):
         log_action('dataset.manual_apply','取得結果を手動反映')
-        st.session_state['_reset_comparison_scope']=True
         invalidate_dataset();st.rerun()
 
 
@@ -1214,7 +1269,7 @@ def collection_panel(config,dataset):
                 except DatabaseError as e:st.error(str(e))
 
 # ── 設定：作業ログの確認・出力 ─────────────────────────────────────────────
-@st.fragment(run_every='5s')
+@st.fragment
 def settings_panel(config,audit,store):
     st.subheader('設定')
     st.markdown('#### 作業ログ')
@@ -1296,7 +1351,7 @@ def main():
     st.set_page_config(page_title='薬局比較',page_icon='🚉',layout='wide',initial_sidebar_state='collapsed')
     st.html('<style>'+OUTER_CSS+'</style>')
     st.html('<section class="page-hero"><span class="hero-label">PHARMACY EXPLORER</span><h1>薬局比較</h1><p>公開料金と薬局の場所を、同じ条件で比較。</p></section>')
-    config=settings();audit=None;store=None;dataset=None;error=''
+    config=settings();audit=None;store=None;catalog=None;error=''
     try:
         audit=work_log(config.get('url',''),config.get('secret_key',''))
         st.session_state['_work_log']=audit
@@ -1314,7 +1369,6 @@ def main():
         st.session_state['_active_tab']=selected;st.session_state['_active_tab_at']=clock
     if selected=='薬局比較' and st.session_state.get('_pending_update_revision') and st.session_state.get('_pending_update_revision')!=st.session_state.get('_applied_update_revision'):
         st.session_state['_applied_update_revision']=st.session_state['_pending_update_revision']
-        st.session_state['_reset_comparison_scope']=True
         invalidate_dataset()
         log_action('dataset.deferred_apply','比較タブへの移動時に取得結果を反映')
     if config.get('url') and config.get('secret_key'):
@@ -1330,42 +1384,46 @@ def main():
                         st.session_state['_applied_entry_revision']=revision
                         invalidate_dataset()
                         log_action('dataset.entry_apply','比較タブへの移動時に最新の保存データを読込')
-            with trace(audit,'database','dataset.load') as result:
-                snapshot_key=digest([config['url'],digest(config['secret_key'])])
-                cached=st.session_state.get('_dataset_snapshot')
-                if cached and cached['key']==snapshot_key:
-                    dataset=cached['data'];result['session_snapshot_reused']=True
-                else:
-                    dataset=read_data(config['url'],digest(config['secret_key']),config['secret_key'],audit)
-                    st.session_state['_dataset_snapshot']={'key':snapshot_key,'data':dataset}
-                    result['session_snapshot_reused']=False
-                result.update(pharmacy_count=len(dataset['pharmacies']),station_count=len(dataset['stations']))
+            with trace(audit,'database','catalog.load') as result:
+                auth_id=digest(config['secret_key'])
+                catalog=read_catalog(config['url'],auth_id,config['secret_key'],audit)
+                result.update(region_count=len(catalog['regions']),pharmacy_count=catalog['total_count'])
         except DatabaseError as exc:
             error=str(exc)
             if audit:audit.record('system','connection.configure','error',error)
     else:error='SupabaseのURLとサーバー用キーをStreamlitのSecretsへ設定してください。'
     with tabs[0]:
-        if error:st.error(error)
-        if dataset is not None:
-            if not dataset['pharmacies']:st.info('「データ取得・更新」で地域を選び、取得を開始してください。')
-            elif not dataset['rates']['basic'] or not dataset['rates']['regional'] or not {'cooperation','digital'}<=dataset['rates'].keys():st.info('「データ取得・更新」内の料金マスタを登録してください。')
+        if selected=='薬局比較':
+            if error:st.error(error)
+        if catalog is not None and selected=='薬局比較':
+            if not catalog['regions']:st.info('「データ取得・更新」で地域を選び、取得を開始してください。')
+            elif not catalog['rates']['basic'] or not catalog['rates']['regional'] or not {'cooperation','digital'}<=catalog['rates'].keys():st.info('「データ取得・更新」内の料金マスタを登録してください。')
             else:
-                available=[r for r in REGIONS if any(p['region']==r for p in dataset['pharmacies'])]
-                options=['保存済みの全地域']+available
-                if st.session_state.pop('_reset_comparison_scope',False):st.session_state['comparison_scope']=options[0]
-                if st.session_state.get('comparison_scope') not in options:st.session_state['comparison_scope']=options[0]
+                options=['保存済みの全地域']+catalog['regions']
+                if 'comparison_scope' not in st.session_state:
+                    # On a cold start, render a single region rather than 7,000+ pharmacies.
+                    st.session_state['comparison_scope']='品川区' if '品川区' in catalog['regions'] else catalog['regions'][0]
+                if st.session_state.pop('_reset_comparison_scope',False):
+                    st.session_state['comparison_scope']='保存済みの全地域'
+                if st.session_state.get('comparison_scope') not in options:
+                    st.session_state['comparison_scope']='品川区' if '品川区' in catalog['regions'] else catalog['regions'][0]
                 scope=st.selectbox('表示地域',options,key='comparison_scope')
                 if st.session_state.get('_scope_last')!=scope:
                     log_action('scope.change','比較する地域を変更',{'region':scope});st.session_state['_scope_last']=scope
-                view=dict(dataset)
-                if scope!='保存済みの全地域':view['pharmacies']=[p for p in dataset['pharmacies'] if p['region']==scope]
-                view['pharmacies']=[p for p in view['pharmacies'] if not p.get('sourceMissing')]
-                view['viewRegion']=scope
-                st.caption(f"保存済み {len(dataset['pharmacies']):,}薬局｜選択地域 {len(view['pharmacies']):,}薬局。料金未記載の薬局は地図内の比較条件で表示できます。")
-                prepare_comparison(view,audit)
+                try:
+                    with trace(audit,'database','dataset.load',{'region':scope}) as result:
+                        region=None if scope=='保存済みの全地域' else scope
+                        view=read_data(config['url'],digest(config['secret_key']),config['secret_key'],region,_catalog=catalog,_audit=audit)
+                        result.update(pharmacy_count=len(view['pharmacies']),station_count=len(view['stations']))
+                    view['pharmacies']=[p for p in view['pharmacies'] if not p.get('sourceMissing')]
+                    view['viewRegion']=scope
+                    st.caption(f"保存済み {catalog['total_count']:,}薬局｜選択地域 {len(view['pharmacies']):,}薬局。料金未記載の薬局は地図内の比較条件で表示できます。")
+                    if view['pharmacies']:prepare_comparison(view,audit)
+                    else:st.info('選択地域に表示できる薬局がありません。')
+                except DatabaseError as e:st.error(str(e))
     with tabs[1]:
-        if dataset is not None:
-            if selected=='データ取得・更新':collection_panel(config,dataset)
+        if catalog is not None:
+            if selected=='データ取得・更新':collection_panel(config,catalog)
         else:st.info(error or '接続情報を確認してください。')
     with tabs[2]:
         if selected=='設定':settings_panel(config,audit,store)
