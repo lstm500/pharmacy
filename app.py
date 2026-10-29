@@ -8,6 +8,9 @@ import html as html_lib
 import io
 import json
 import math
+import sqlite3
+import tempfile
+from contextlib import contextmanager, nullcontext
 import os
 import re
 import ssl
@@ -23,8 +26,9 @@ from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 import streamlit as st
+import streamlit.components.v1 as components
 
-BUILD = '2.0'
+BUILD = '3.0'
 JST = timezone(timedelta(hours=9))
 GOV = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/kijyun.html'
 STATION_API = 'https://express.heartrails.com/api/json'
@@ -81,16 +85,17 @@ class SupabaseStore:
             except (ValueError,TypeError,UnicodeError,AttributeError): raise DatabaseError('Supabaseキーの形式を確認してください。') from None
             self._headers['Authorization']='Bearer '+secret_key
         self._opener=opener or urllib.request.urlopen
-    def _request(self,path,*,method='GET',body=None,query=None):
+    def _request(self,path,*,method='GET',body=None,query=None,extra_headers=None):
         endpoint=self.url+'/rest/v1/'+path
         if query: endpoint+='?'+urllib.parse.urlencode(query)
-        req=urllib.request.Request(endpoint,data=None if body is None else json.dumps(body,ensure_ascii=False).encode(),headers=self._headers,method=method)
+        req=urllib.request.Request(endpoint,data=None if body is None else json.dumps(body,ensure_ascii=False).encode(),headers={**self._headers,**(extra_headers or {})},method=method)
         try:
             with self._opener(req,timeout=40,context=ssl.create_default_context()) as r: b=r.read()
             return json.loads(b) if b else None
         except urllib.error.HTTPError as e:
             messages={400:'保存データまたはSQLの形式を確認してください。',401:'Supabase接続キーを確認してください。',403:'薬局テーブル・関数へのアクセス権を確認してください。',404:'setup.sqlの実行とData APIの設定を確認してください。',409:'保存内容または同時実行状態を確認してください。'}
-            raise DatabaseError(messages.get(e.code,f'Supabaseとの通信でHTTP {e.code}が発生しました。')) from None
+            error=DatabaseError(messages.get(e.code,f'Supabaseとの通信でHTTP {e.code}が発生しました。'));error.http_status=e.code
+            raise error from None
         except (urllib.error.URLError,TimeoutError,OSError,ValueError): raise DatabaseError('Supabaseとの通信に失敗しました。保存完了とは扱わず停止します。') from None
     def all_rows(self,table,order,filters=None):
         if not re.fullmatch(r'(shinagawa|pharmacy)_[a-z_]+',table): raise ValueError('Unexpected table')
@@ -163,7 +168,9 @@ class Web:
                     data=r.read(limit+1)
                 if len(data)>limit: raise CollectionError('公開資料が処理可能サイズを超えています。')
                 return data
-            except (urllib.error.URLError,TimeoutError,OSError):
+            except (urllib.error.URLError,TimeoutError,OSError) as exc:
+                audit=getattr(self,'audit',None)
+                if audit:audit.record('collection','http.attempt','error' if attempt==2 else 'warning','HTTP '+str(exc.code) if isinstance(exc,urllib.error.HTTPError) else type(exc).__name__,context={'host':p.hostname,'path':p.path,'attempt':attempt+1,'will_retry':attempt<2})
                 if attempt==2: raise CollectionError('公開データの取得に失敗しました。取得元の通信状態を確認してください。') from None
                 if self.stop.wait(2**attempt): raise Stopped()
     def json(self,url):
@@ -415,7 +422,337 @@ def worker_for(config,store,start=False):
             job=UpdateWorker(store);jobs[key]=job;job.start()
         return job
 
+# ── 作業ログ（画面操作／データ取得を共通形式で記録） ───────────────────────
+LOG_SCHEMA = 1
+LOG_CATEGORIES = {'ui','collection','database','system'}
+LOG_STATUSES = {'started','ok','info','skipped','warning','error','cancelled'}
+
+class WorkLog:
+    """SQLiteに先に記録し、既存のSupabaseログテーブルへ非同期で送る。"""
+    def __init__(self, config, *, path=None, start=True):
+        self.path=str(path or (Path(tempfile.gettempdir())/('pharmacy-worklog-'+digest(config.get('url',''))[:20]+'.sqlite3')))
+        self.redactions=tuple(x for x in (config.get('secret_key'),) if x)
+        self.lock=threading.RLock();self.local=threading.local();self.sink=None
+        self.storage_error='';self.upload_error='';self.last_uploaded_at='';self.stop=threading.Event();self.last_failure=0
+        with self.connect() as db:
+            db.execute('PRAGMA journal_mode=WAL')
+            db.execute('CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY,category TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,event TEXT NOT NULL,uploaded INTEGER NOT NULL DEFAULT 0)')
+            db.execute('CREATE INDEX IF NOT EXISTS log_filter ON events(category,status,started_at)')
+        if start:
+            self.thread=threading.Thread(target=self.loop,daemon=True,name='pharmacy-log-upload');self.thread.start()
+    def connect(self):return sqlite3.connect(self.path,timeout=5)
+    def clean(self,value,depth=0):
+        if depth>5:return '[省略]'
+        if isinstance(value,dict):
+            blocked={'password','secret_key','token','apikey','authorization','headers','payload','search','query','input','raw','html'}
+            return {str(k)[:64]:self.clean(v,depth+1) for k,v in list(value.items())[:32] if str(k).lower() not in blocked}
+        if isinstance(value,(list,tuple)):return [self.clean(x,depth+1) for x in value[:64]]
+        if isinstance(value,str):
+            for secret in self.redactions:value=value.replace(secret,'[非記録]')
+            value=re.sub(r'sb_(?:secret|publishable)_[A-Za-z0-9_-]+','[非記録]',value)
+            value=re.sub(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+','[非記録]',value)
+            value=re.sub(r'(https?://[^\s?]+)\?[^\s]+',r'\1?[非記録]',value)
+            return value[:600]
+        if value is None or isinstance(value,(bool,int)):return value
+        if isinstance(value,float):return value if math.isfinite(value) else None
+        return self.clean(str(value),depth+1)
+    def context(self,**values):self.local.context=self.clean(values)
+    def record(self,category,action,status='ok',detail='',*,duration_ms=0,started_at=None,context=None,run_id=None,event_id=None,source='server'):
+        end=now();start=started_at or end
+        category=category if category in LOG_CATEGORIES else 'system'
+        status=status if isinstance(status,str) and status in LOG_STATUSES else 'info'
+        try:duration=max(0,round(float(duration_ms),3))
+        except (ValueError,TypeError):duration=0
+        if not math.isfinite(duration):duration=0
+        ctx={**getattr(self.local,'context',{}),**(context or {})}
+        event={'schema_version':LOG_SCHEMA,'event_id':event_id or uuid.uuid4().hex,'run_id':run_id or ctx.pop('run_id',None) or '',
+            'category':category,'action':str(action)[:100],'status':status,'status_detail':self.clean(detail),
+            'started_at':start,'ended_at':end,'duration_ms':duration,'source':source,'build':BUILD,'context':self.clean(ctx)}
+        try:
+            with self.lock,self.connect() as db:
+                db.execute('INSERT OR IGNORE INTO events VALUES(?,?,?,?,?,0)',(event['event_id'],category,status,start,json.dumps(event,ensure_ascii=False)))
+            self.storage_error=''
+            return event['event_id']
+        except (sqlite3.Error,OSError):
+            self.storage_error='作業ログをサーバーの一時保存領域へ書き込めません。ログの保存を確認できていません。'
+            return None
+    @contextmanager
+    def span(self,category,action,context=None):
+        began=now();clock=time.perf_counter();result={}
+        try:yield result
+        except Exception as e:
+            status='cancelled' if (isinstance(e,Stopped) or type(e).__name__=='Stopped') else 'error'
+            self.record(category,action,status,type(e).__name__+': '+str(e),duration_ms=(time.perf_counter()-clock)*1000,started_at=began,context={**(context or {}),'http_status':getattr(e,'http_status',None)})
+            raise
+        else:self.record(category,action,result.pop('status','ok'),result.pop('detail','完了'),duration_ms=(time.perf_counter()-clock)*1000,started_at=began,context={**(context or {}),**result})
+    def ingest_browser(self,payload,session_id):
+        accepted=[]
+        if not isinstance(payload,dict):return accepted
+        events=payload.get('events',[])
+        if not isinstance(events,list):return accepted
+        for row in events[:100]:
+            if not isinstance(row,dict):continue
+            eid=row.get('event_id','');action=row.get('action','')
+            if not re.fullmatch(r'[a-zA-Z0-9_-]{8,100}',str(eid)) or not re.fullmatch(r'[a-zA-Z0-9_.:-]{1,100}',str(action)):continue
+            ctx=row.get('context',{})
+            if not isinstance(ctx,dict):ctx={}
+            allowed={'element','control','view','width','height','dpr','count','query_length','checked','zoom','visible','duration_kind','long_task_ms','message','line','column','region','value','pending_count','sample_rate','sequence'}
+            ctx={k:v for k,v in ctx.items() if k in allowed}
+            client_started=row.get('started_at')
+            try:
+                parsed=datetime.fromisoformat(str(client_started).replace('Z','+00:00'))
+                if parsed.tzinfo is None:raise ValueError()
+                client_started=parsed.isoformat()
+            except (ValueError,TypeError):client_started=None
+            status=row.get('status','ok')
+            saved=self.record('ui',action,status,row.get('status_detail',''),duration_ms=row.get('duration_ms',0),started_at=client_started,
+                context=ctx,run_id=session_id,event_id=eid,source='browser')
+            if saved:accepted.append(eid)
+        return accepted
+    def flush_once(self):
+        if not self.sink:return 0
+        with self.lock,self.connect() as db:
+            pending=db.execute('SELECT id,event FROM events WHERE uploaded=0 ORDER BY rowid LIMIT 100').fetchall()
+        if not pending:return 0
+        events=[json.loads(x[1]) for x in pending]
+        batch={'id':'wl_'+digest([x[0] for x in pending]),'run_id':events[0]['run_id'],'stage':'work_log_batch','region':'',
+            'details':{'schema_version':LOG_SCHEMA,'events':events}}
+        try:self.sink(batch)
+        except Exception:
+            self.upload_error='Supabaseへのログ保存を確認できません。未送信分を保持し、再送します。'
+            if time.monotonic()-self.last_failure>60:
+                self.last_failure=time.monotonic();self.record('system','log.upload','error',self.upload_error)
+            return 0
+        with self.lock,self.connect() as db:db.executemany('UPDATE events SET uploaded=1 WHERE id=?',[(x[0],) for x in pending])
+        self.upload_error='';self.last_uploaded_at=now();return len(pending)
+    def loop(self):
+        while not self.stop.wait(5):
+            try:self.flush_once()
+            except (sqlite3.Error,OSError):self.storage_error='作業ログの保存領域へアクセスできません。'
+    def pending(self):
+        with self.lock,self.connect() as db:return db.execute('SELECT count(*) FROM events WHERE uploaded=0').fetchone()[0]
+    def read(self,category='all',status='all',days=7):
+        where=[];args=[]
+        if category!='all':where.append('category=?');args.append(category)
+        if status!='all':where.append('status=?');args.append(status)
+        if days:where.append('started_at>=?');args.append((datetime.now(timezone.utc)-timedelta(days=days)).isoformat())
+        sql='SELECT event FROM events'+(' WHERE '+' AND '.join(where) if where else '')+' ORDER BY started_at,id'
+        with self.lock,self.connect() as db:return [json.loads(x[0]) for x in db.execute(sql,args)]
+    def restore(self,batches):
+        count=0
+        with self.lock,self.connect() as db:
+            for batch in batches:
+                for e in (batch.get('details') or {}).get('events',[]):
+                    if not isinstance(e,dict) or not all(k in e for k in ('event_id','category','status','started_at')):continue
+                    before=db.total_changes
+                    db.execute('INSERT OR IGNORE INTO events VALUES(?,?,?,?,?,1)',(e['event_id'],e['category'],e['status'],e['started_at'],json.dumps(self.clean(e),ensure_ascii=False)))
+                    count+=db.total_changes-before
+        return count
+
+@st.cache_resource
+def work_log(url,secret_key):return WorkLog({'url':url,'secret_key':secret_key})
+
+def trace(audit,category,action,context=None):
+    return audit.span(category,action,context) if audit else nullcontext({})
+
+def log_action(action,detail='',context=None,status='ok'):
+    audit=st.session_state.get('_work_log')
+    if audit:audit.record('ui',action,status,detail,context=context,run_id=st.session_state.get('_log_session',''))
+
+# 計測を本体の通信・更新処理へ接続。ログ失敗を本体へ伝播させない。
+_original_db_request = SupabaseStore._request
+
+def _logged_db_request(self,path,**kwargs):
+    audit=getattr(self,'audit',None)
+    if path=='pharmacy_update_events' and kwargs.get('method')=='POST':return _original_db_request(self,path,**kwargs)
+    context={'resource':path,'method':kwargs.get('method','GET')}
+    body=kwargs.get('body') or {}
+    if path.endswith('pharmacy_job_action'):context['command']=body.get('action','')
+    if path.endswith('pharmacy_commit_batch'):context['item_count']=len(body.get('items',[]))
+    with trace(audit,'database','request',context) as result:
+        value=_original_db_request(self,path,**kwargs)
+        if audit and path.endswith('pharmacy_job_action') and body.get('action')=='claim' and isinstance(value,dict):audit.context(run_id=value.get('state',{}).get('run_id',''))
+        if isinstance(value,list):result['row_count']=len(value)
+        elif isinstance(value,dict):
+            for k in ('saved','new','updated','unchanged'):
+                if k in value:result[k]=value[k]
+        return value
+SupabaseStore._request=_logged_db_request
+
+def _persist_work_logs(self,batch):
+    return _original_db_request(self,'pharmacy_update_events',method='POST',body=[batch],query={'on_conflict':'id'},extra_headers={'Prefer':'resolution=merge-duplicates'})
+SupabaseStore.persist_work_logs=_persist_work_logs
+
+_original_web_get=Web.get
+
+def _logged_web_get(self,url,limit=35_000_000):
+    p=urllib.parse.urlsplit(url);audit=getattr(self,'audit',None)
+    with trace(audit,'collection','http.fetch',{'host':p.hostname,'path':p.path}) as result:
+        data=_original_web_get(self,url,limit);result['bytes']=len(data);return data
+Web.get=_logged_web_get
+
+_original_geocode=geocode
+
+def _logged_geocode(web,address):
+    with trace(getattr(web,'audit',None),'collection','coordinate.lookup',{'region':region_of(address)}) as result:
+        value=_original_geocode(web,address)
+        if value.get('lat') is None:result.update(status='warning',detail='町名と一致する位置を確認できず。未確認として保存し、次回再試行。')
+        return value
+geocode=_logged_geocode
+
+_original_combine=combine_pharmacy
+
+def _logged_combine(source,old,meta,web,force=False):
+    audit=getattr(web,'audit',None)
+    if audit:audit.context(run_id=getattr(audit.local,'context',{}).get('run_id') or getattr(web,'log_run_id',''),region=source.get('region',''),pharmacy_code=source.get('code',''))
+    with trace(audit,'collection','pharmacy.prepare',{'pharmacy_code':source.get('code',''),'region':source.get('region','')}) as result:
+        value=_original_combine(source,old,meta,web,force)
+        result.update(coordinate_reused=bool(old and not force and compact(old.get('address'))==compact(source.get('address')) and old.get('lat') is not None))
+        if value.get('coordinateIssue'):result.update(status='warning',detail=value['coordinateIssue'])
+        return value
+combine_pharmacy=_logged_combine
+
+_original_station_collect=StationCollector.collect
+
+def _logged_station_collect(self,region,pharmacies):
+    with trace(getattr(self.web,'audit',None),'collection','stations.update',{'region':region}) as result:
+        stations=_original_station_collect(self,region,pharmacies);result['station_count']=len(stations)
+        if self.issues:result.update(status='warning',detail='一部路線の情報が未確認です。',failed_line_count=len(self.issues))
+        return stations
+StationCollector.collect=_logged_station_collect
+
+_original_worker_run=UpdateWorker.run
+
+def _logged_worker_run(self):
+    audit=getattr(self.store,'audit',None);self.web.audit=audit;self.web.log_run_id=self.owner
+    if audit:audit.context(run_id=self.owner)
+    if audit:audit.record('collection','update.run','started','取得・更新を開始')
+    clock=time.perf_counter();began=now()
+    loader=self.source_loader
+    def logged_source(web):
+        with trace(audit,'collection','source.load_and_parse') as result:
+            rows,meta=loader(web);result.update(row_count=len(rows),snapshot_date=meta.get('pharmacies_as_of',''),source_hash=meta.get('source_hash',''))
+            return rows,meta
+    self.source_loader=logged_source
+    try:_original_worker_run(self)
+    finally:
+        self.source_loader=loader
+        if audit:
+            snap=self.snapshot();status='error' if snap.get('error') else 'cancelled' if self.stop.is_set() else 'skipped' if snap.get('message')=='準備中' else 'ok'
+            audit.record('collection','update.run',status,snap.get('error') or snap.get('message',''),duration_ms=(time.perf_counter()-clock)*1000,started_at=began)
+            audit.context()
+UpdateWorker.run=_logged_worker_run
+
+@st.cache_resource
+def comparison_component():
+    root=Path(tempfile.gettempdir())/('pharmacy-component-'+digest(COMPONENT_SHELL)[:16]);root.mkdir(parents=True,exist_ok=True)
+    (root/'index.html').write_text(COMPONENT_SHELL,encoding='utf-8')
+    return components.declare_component('pharmacy_comparison_log_v1',path=str(root))
+
+@st.fragment
+def render_comparison(dataset,audit):
+    began=time.perf_counter();doc=build_document(dataset)
+    project=digest(st.session_state.get('_log_project',''))[:16]
+    doc=doc.replace('</body>','<script>window.PHARMACY_LOG_PROJECT='+safe_json(project)+';</script><script>'+BROWSER_LOG_JS+'</script></body>')
+    sig=digest(doc)
+    if st.session_state.get('_last_map_document')!=sig:
+        st.session_state['_last_map_document']=sig
+        if audit:audit.record('ui','view.build','ok','比較画面を生成',duration_ms=(time.perf_counter()-began)*1000,context={'region':dataset.get('viewRegion',''),'pharmacy_count':len(dataset['pharmacies'])},run_id=st.session_state.get('_log_session',''))
+    value=comparison_component()(html=doc,ack=st.session_state.get('_browser_log_ack',[]),key='comparison_map',default=None)
+    if audit and isinstance(value,dict) and value.get('batch_id')!=st.session_state.get('_browser_log_batch'):
+        actor=value.get('browser_session','')
+        if not re.fullmatch(r'[a-zA-Z0-9_-]{8,100}',str(actor)):actor=st.session_state.get('_log_session','')
+        ids=audit.ingest_browser(value,actor)
+        if ids:
+            st.session_state['_browser_log_ack']=ids;st.session_state['_browser_log_batch']=value.get('batch_id')
+            st.rerun(scope='fragment')
+
 # ── 埋込画面資産（外部py・uiフォルダ不要） ──
+COMPONENT_SHELL = r"""<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:100%;overflow:hidden}iframe{display:block;width:100%;height:950px;border:0}</style></head><body><iframe id="content" title="薬局比較" sandbox="allow-scripts allow-same-origin allow-popups allow-downloads allow-forms"></iframe><script>
+const frame=document.getElementById('content');let previous='',lastValue='',lastAck=[];
+const send=(type,extra={})=>parent.postMessage({isStreamlitMessage:true,type,...extra},'*');
+addEventListener('message',event=>{
+ const m=event.data||{};
+ if(event.source===parent&&m.type==='streamlit:render'){
+  const a=m.args||{};if(a.html!==previous){previous=a.html||'';frame.srcdoc=previous;}
+  lastAck=a.ack||[];frame.contentWindow?.postMessage({type:'pharmacy.worklog.ack',ids:lastAck},'*');
+  send('streamlit:setFrameHeight',{height:950});
+ }
+ if(event.source===frame.contentWindow&&m.type==='pharmacy.worklog'){
+  frame.contentWindow?.postMessage({type:'pharmacy.worklog.ack',ids:lastAck},'*');
+  const signature=m.batch_id;
+  if(signature!==lastValue){lastValue=signature;send('streamlit:setComponentValue',{value:m});}
+ }
+});
+send('streamlit:componentReady',{apiVersion:1});send('streamlit:setFrameHeight',{height:950});
+</script></body></html>
+"""
+BROWSER_LOG_JS = r"""// 操作内容と描画時間を記録。検索文字列・キー・住所入力は送らない。
+(()=>{
+ const project=window.PHARMACY_LOG_PROJECT||'default',key='pharmacy-worklog-v1-'+project;
+ const makeId=()=>crypto.randomUUID?crypto.randomUUID().replaceAll('-',''):Date.now().toString(36)+Math.random().toString(36).slice(2);
+ let actor='',queue=[],lost=0,storageFailed=false,started=0,lastSent='',lastSendAt=0;
+ try{actor=sessionStorage.getItem(key+'-actor')||makeId();sessionStorage.setItem(key+'-actor',actor);queue=JSON.parse(sessionStorage.getItem(key)||'[]');if(!Array.isArray(queue))queue=[];}catch{actor=makeId();storageFailed=true;}
+ function save(){try{sessionStorage.setItem(key,JSON.stringify(queue));}catch{storageFailed=true;}}
+ function log(action,status='ok',detail='',duration=0,context={}){
+  if(queue.length>=5000){lost++;return;}
+  const ended=new Date(),began=new Date(ended.getTime()-duration);
+  queue.push({event_id:makeId(),action,status,status_detail:detail,duration_ms:Math.round(duration*1000)/1000,started_at:began.toISOString(),context:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,...context}});
+  save();
+ }
+ function flush(){
+  if(!queue.length)return;
+  const events=queue.slice(0,50),batch_id=events[0].event_id+'_'+events[events.length-1].event_id;
+  if(batch_id===lastSent&&performance.now()-lastSendAt<5000)return;
+  lastSent=batch_id;lastSendAt=performance.now();
+  parent.postMessage({type:'pharmacy.worklog',batch_id,browser_session:actor,events},'*');
+ }
+ addEventListener('message',e=>{
+  if(e.source!==parent||e.data?.type!=='pharmacy.worklog.ack')return;
+  const ids=new Set(e.data.ids||[]);queue=queue.filter(x=>!ids.has(x.event_id));save();
+  if(lost&&queue.length<4900){log('buffer.overflow','warning','未送信ログの上限を超えた操作があります。',0,{count:lost});lost=0;}
+  if(storageFailed){storageFailed=false;log('buffer.storage','warning','ブラウザー内のログ保持を確認できません。');}
+ });
+ let searchTimer;
+ document.addEventListener('input',e=>{
+  if(e.target.id!=='search')return;
+  clearTimeout(searchTimer);const length=e.target.value.length;
+  searchTimer=setTimeout(()=>log('search.change','ok','検索条件を変更',0,{control:'search',query_length:length}),350);
+ },true);
+ document.addEventListener('change',e=>{
+  const t=e.target;if(!t.id||t.id==='search')return;
+  const context={control:t.id};
+  if(t.type==='checkbox')context.checked=t.checked;
+  if(t.tagName==='SELECT'&&['burden','sort'].includes(t.id))context.value=t.value;
+  log('filter.change','ok','比較条件を変更',0,context);
+ },true);
+ document.addEventListener('click',e=>{
+  const t=e.target.closest('button,[role="tab"],a');if(!t)return;
+  const id=t.id||(t.hasAttribute('data-add')?'compare.store':t.hasAttribute('data-rail-store')?'store.open':t.hasAttribute('data-group-store')?'store.open':t.tagName==='A'?'source.link':'button');
+  const began=performance.now();
+  requestAnimationFrame(()=>requestAnimationFrame(()=>log('interaction.paint','ok','操作後の描画',performance.now()-began,{element:id,duration_kind:'click_to_second_frame',view:typeof view==='string'?view:'map'})));
+ },true);
+ addEventListener('error',e=>log('javascript.error','error',String(e.message||'ブラウザー処理エラー').slice(0,240),0,{line:e.lineno||0,column:e.colno||0}));
+ addEventListener('unhandledrejection',e=>log('javascript.rejection','error',String(e.reason?.message||e.reason||'非同期処理エラー').slice(0,240)));
+ if(window.PerformanceObserver){try{new PerformanceObserver(list=>{for(const x of list.getEntries())log('performance.long_task','warning','メイン処理の占有が50msを超えました。',x.duration,{long_task_ms:x.duration});}).observe({entryTypes:['longtask']});}catch{}}
+ let mapAttached=false;
+ function attachMap(){
+  if(mapAttached)return;
+  if(typeof map==='undefined'||!map){setTimeout(attachMap,250);return;}
+  mapAttached=true;let movement=0,failures=0;
+  map.on('movestart zoomstart',()=>{if(!movement)movement=performance.now();});
+  map.on('moveend',()=>{log('map.move','ok','地図の表示範囲を変更',movement?performance.now()-movement:0,{zoom:map.getZoom(),duration_kind:'map_movement'});movement=0;});
+  map.eachLayer(l=>{if(l instanceof L.TileLayer)l.on('tileerror',()=>{failures++;if(failures===1||failures%10===0)log('map.tile_failure','warning','背景地図のタイルを取得できません。',0,{count:failures});});});
+  log('map.ready','ok','地図の初期表示完了',performance.now()-started,{zoom:map.getZoom(),count:typeof data==='undefined'?0:data.length,duration_kind:'document_to_map_ready'});
+ }
+ attachMap();
+ document.addEventListener('visibilitychange',()=>{log('page.visibility','info','画面の表示状態を変更',0,{visible:!document.hidden});flush();});
+ addEventListener('pagehide',()=>{log('page.leave','info','画面から移動',performance.now()-started,{duration_kind:'page_dwell'});save();flush();});
+ log('document.ready','ok','比較画面を読み込みました。',performance.now()-started,{duration_kind:'telemetry_initialization'});
+ setInterval(flush,1800);
+ setTimeout(flush,100);
+})();
+"""
 OUTER_CSS = r""".block-container{padding:24px 28px 80px!important;max-width:1600px!important;margin-inline:auto!important;box-sizing:border-box!important}
 .stMainBlockContainer{padding-top:24px!important}
 header[data-testid="stHeader"],[data-testid="stSidebarCollapsedControl"],footer{display:none}
@@ -427,6 +764,11 @@ header[data-testid="stHeader"],[data-testid="stSidebarCollapsedControl"],footer{
 @media(max-width:768px){.block-container{padding:16px 14px 72px!important}.stMainBlockContainer{padding-top:16px!important}[data-testid="stTabs"] [role="tablist"]{gap:6px;margin-bottom:12px;min-height:56px}[data-testid="stTabs"] [role="tab"]{padding:11px 10px!important;font-size:14px}[data-testid="stTabs"] [role="tab"] p{font-size:14px}}
 /* 選択中は白いボタンと紫の文字で示す。既定の下線は重ねない。 */
 [data-testid="stTabs"] [role="tablist"]::after,[data-testid="stTabs"] [role="tab"]::after{display:none!important}
+.page-hero{margin:0 0 26px;padding:28px 30px 26px;background:#203f39;color:#fff;border-radius:0 0 18px 18px}
+.page-hero .hero-label{display:inline-block;padding:4px 8px;border-radius:12px;background:#ffffff22;font-size:10px;font-weight:700;letter-spacing:1.6px}
+.page-hero h1{margin:14px 0 10px;color:#fff;font-size:32px;line-height:1.3}
+.page-hero p{margin:0;color:#f1f5f4;font-size:14px;line-height:1.7}
+@media(max-width:768px){.page-hero{padding:22px 20px;margin-bottom:20px}.page-hero h1{font-size:28px}[data-testid="stTabs"] [role="tab"]{padding:11px 5px!important}[data-testid="stTabs"] [role="tab"] p{font-size:13px}}
 """
 UI_HTML = r"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>薬局比較</title><meta name="description" content="@@REGION@@の薬局を地図と公開料金で比較。"><link rel="stylesheet" href="vendor/leaflet.css"><link rel="stylesheet" href="style.css"></head><body>
 <header><a class="brand" href="#map"><span class="brand-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5a5 5 0 017 7l-4 4a5 5 0 01-7-7l4-4z" stroke="currentColor" stroke-width="2"/><path d="M7 8l7 7" stroke="currentColor" stroke-width="2"/></svg></span><span>薬局比較</span></a><span class="header-note">公開料金で、選択肢が見える。</span><div class="header-right"><span class="live-dot"></span><span>@@REGION@@</span><button class="text-button" id="sourceBtn">データについて ↗</button></div></header>
@@ -537,16 +879,24 @@ def build_document(dataset,root=None):
     return document
 
 @st.cache_data(ttl=300,show_spinner=False)
-def read_data(url,auth_id,_secret_key):
-    return SupabaseStore(url,_secret_key).read_dataset()
+def read_data(url,auth_id,_secret_key,_audit=None):
+    store=SupabaseStore(url,_secret_key);store.audit=_audit
+    return store.read_dataset()
 
 @st.fragment(run_every='3s')
 def update_status(config):
-    store=SupabaseStore(**config)
+    store=SupabaseStore(**config);store.audit=st.session_state.get('_work_log')
     try:job=store.job()
     except DatabaseError as e:st.error(str(e));return
     if not job:return
     state=job['state'];stats=state.get('stats',{});worker=worker_for(config,store)
+    revision=(state.get('run_id',''),state.get('region_index',0),job['status'])
+    if (state.get('region_index',0)>0 or job['status'] in ('completed','partial')) and st.session_state.get('_applied_update_revision')!=revision:
+        st.session_state['_applied_update_revision']=revision
+        st.session_state['_reset_comparison_scope']=True
+        read_data.clear()
+        log_action('dataset.auto_apply','取得結果を比較画面へ自動反映',{'completed_regions':state.get('region_index',0),'processed':stats.get('processed',0)})
+        st.rerun()
     snap=worker.snapshot() if worker else {}
     total=len(state.get('regions',[]));index=state.get('region_index',0)
     label={'queued':'開始待ち','running':'更新中','paused':'停止中','failed':'エラー停止','completed':'完了','partial':'完了・座標未確認あり'}.get(job['status'],job['status'])
@@ -559,6 +909,7 @@ def update_status(config):
     a,b=st.columns(2)
     if a.button('停止（保存済みデータを保持）',disabled=not active,key='stop_update'):
         try:
+            log_action('collection.stop','取得・更新の停止を要求')
             if worker:worker.request_stop()
             else:store.action('stop')
             st.rerun(scope='fragment')
@@ -566,14 +917,17 @@ def update_status(config):
     resumable=not active and job['status'] in ('paused','failed','running','queued')
     if b.button('保存済み地点から再開',disabled=not resumable,key='resume_update'):
         try:
+            log_action('collection.resume','保存済み地点から再開')
             store.action('resume');worker_for(config,store,start=True);st.rerun(scope='fragment')
         except DatabaseError as e:st.error(str(e))
     if st.button('更新結果を地図へ反映',key='apply_update'):
+        log_action('dataset.manual_apply','取得結果を手動反映')
+        st.session_state['_reset_comparison_scope']=True
         read_data.clear();st.rerun()
 
 
 def collection_panel(config,dataset):
-    store=SupabaseStore(**config)
+    store=SupabaseStore(**config);store.audit=st.session_state.get('_work_log')
     st.subheader('データ取得・継続更新')
     group=st.selectbox('取得地域のまとめ選択',['個別に選択','東京23区すべて','東京都の26市すべて','23区と26市すべて'])
     if group=='個別に選択':regions=st.multiselect('取得する区・市',REGIONS,default=['品川区'])
@@ -582,6 +936,9 @@ def collection_panel(config,dataset):
     else:regions=REGIONS
     force=st.checkbox('保存済みの座標も取り直す',value=False)
     stations=st.checkbox('周辺の駅情報も更新する',value=True)
+    selection={'regions':list(regions),'force':force,'stations':stations}
+    if st.session_state.get('_collection_selection')!=selection:
+        log_action('collection.conditions','取得条件を変更',selection);st.session_state['_collection_selection']=selection
     st.caption('公式Excelを取得し、選択地域を順番に保存します。同じ薬局は更新し、変更前の内容は履歴に残します。')
     st.caption('画面を閉じてもサーバー稼働中は継続します。サーバー休止・再起動後は「保存済み地点から再開」を押してください。全地域を一巡すると終了します。')
     try:
@@ -589,25 +946,22 @@ def collection_panel(config,dataset):
         active=(worker and worker.thread.is_alive()) or (current and current.get('lease_until') and datetime.fromisoformat(current['lease_until'])>datetime.now(timezone.utc))
         if st.button('選択地域の取得・更新を開始',type='primary',disabled=not regions or bool(active)):
             state={'regions':list(regions),'region_index':0,'offset':0,'force':force,'stations':stations,'run_id':uuid.uuid4().hex,'created_at':now()}
+            log_action('collection.start','取得・更新を開始',{'regions':regions,'job_run_id':state['run_id']})
             store.action('start',patch=state);worker_for(config,store,start=True);st.rerun()
         update_status(config)
         status=store.region_status()
         if status:
             st.subheader('地域別の更新状況')
             st.dataframe([{'地域':r['region'],'資料基準日':r['snapshot_date'],'登録件数':r['count'],'座標未確認':r['unlocated'],'確認日時':r['checked_at'],'駅情報':r.get('station_issue') or '確認済み／更新対象外'} for r in status],hide_index=True,width='stretch')
-        with st.expander('更新ログ'):
-            events=store.events()
-            if events:
-                st.dataframe([{'日時':r['created_at'],'処理':r['stage'],'地域':r['region'],'内容':json.dumps(r['details'],ensure_ascii=False)} for r in events[:50]],hide_index=True,width='stretch')
-                st.download_button('更新ログ JSON',json.dumps(events,ensure_ascii=False,indent=2),'pharmacy_update_log.json','application/json')
-            else:st.caption('更新履歴はまだありません。')
     except DatabaseError as e:st.error(str(e))
     with st.expander('料金マスタの確認・更新'):
         st.caption('届出の取得と料金改定は別です。既存の点数は自動推測で変更しません。施行日と公式出典を確認して保存してください。')
         if not dataset.get('rateRows'):
             st.info('料金マスタが未登録です。初期値は2026年6月施行版です。')
             if st.button('2026年6月版の料金マスタを初期登録'):
-                try:store.save_rates(DEFAULT_RATES);read_data.clear();st.rerun()
+                try:
+                    log_action('rates.initialize','初期料金マスタを登録')
+                    store.save_rates(DEFAULT_RATES);read_data.clear();st.rerun()
                 except DatabaseError as e:st.error(str(e))
         else:
             edited=st.data_editor(dataset['rateRows'],hide_index=True,num_rows='fixed',disabled=['fee_key','category'],key='rate_editor')
@@ -622,38 +976,125 @@ def collection_panel(config,dataset):
                         url=valid_http_url(r['source_url'])
                         if not url.startswith('https://'):raise ValueError()
                         clean.append({'fee_key':r['fee_key'],'category':r['category'],'points':point,'valid_from':date,'source_url':url})
+                    log_action('rates.save','料金マスタを更新',{'count':len(clean)})
                     store.save_rates(clean);read_data.clear();st.rerun()
-                except (ValueError,TypeError,KeyError):st.error('点数・施行日・HTTPSの公式出典URLを確認してください。')
+                except (ValueError,TypeError,KeyError):
+                    log_action('rates.validate','点数・施行日・公式出典URLの形式が不正',status='warning')
+                    st.error('点数・施行日・HTTPSの公式出典URLを確認してください。')
                 except DatabaseError as e:st.error(str(e))
+
+# ── 設定：作業ログの確認・出力 ─────────────────────────────────────────────
+@st.fragment(run_every='5s')
+def settings_panel(config,audit,store):
+    st.subheader('設定')
+    st.markdown('#### 作業ログ')
+    if not audit:
+        st.error('ログ保存領域を利用できません。サーバーの保存権限を確認してください。');return
+    st.caption('画面操作・描画時間と、取得・解析・位置確認・保存の結果を分けて記録します。検索文字列や接続キーは記録しません。')
+    names={'all':'すべて','ui':'UI・UX','collection':'データ取得','database':'データ保存・読込','system':'システム'}
+    statuses={'all':'すべて','ok':'成功','started':'開始','info':'情報','skipped':'省略','warning':'警告・未確認','error':'エラー','cancelled':'中断'}
+    c1,c2,c3=st.columns(3)
+    category=c1.selectbox('作業分類',list(names),format_func=lambda x:names[x],key='log_category')
+    status=c2.selectbox('状態',list(statuses),format_func=lambda x:statuses[x],key='log_status')
+    days=c3.selectbox('対象期間',[1,7,30,0],index=1,format_func=lambda x:'すべて' if x==0 else f'直近{x}日',key='log_days')
+    log_filter={'category':category,'status':status,'days':days}
+    if st.session_state.get('_log_filter')!=log_filter:
+        log_action('log.filter','作業ログの抽出条件を変更',log_filter);st.session_state['_log_filter']=log_filter
+    a,b=st.columns(2)
+    if a.button('ログを更新',key='refresh_work_logs'):
+        log_action('log.refresh','作業ログの一覧・出力内容を更新');st.rerun(scope='fragment')
+    if b.button('Supabaseの過去ログを読み込む',key='restore_work_logs',disabled=store is None):
+        try:
+            began=time.perf_counter()
+            filters={'stage':'eq.work_log_batch'}
+            if days:filters['created_at']='gte.'+(datetime.now(timezone.utc)-timedelta(days=days)).isoformat()
+            batches=store.all_rows('pharmacy_update_events','created_at.asc,id.asc',filters)
+            count=audit.restore(batches)
+            audit.record('system','log.restore','ok','過去ログを読み込みました。',duration_ms=(time.perf_counter()-began)*1000,context={'restored_count':count})
+            st.session_state['_restore_log_result']=f'過去ログを{count}件追加しました。'
+        except DatabaseError as e:audit.record('system','log.restore','error',str(e));st.error(str(e))
+    if st.session_state.get('_restore_log_result'):st.success(st.session_state['_restore_log_result'])
+    if audit.storage_error:st.error(audit.storage_error)
+    if audit.upload_error:st.warning(audit.upload_error)
+    try:
+        rows=audit.read(category,status,days);pending=audit.pending()
+    except (sqlite3.Error,OSError):st.error('ログを読み取れません。');return
+    st.caption(f'出力対象 {len(rows):,}件｜Supabaseへ未送信 {pending:,}件。操作ログは数秒おきに反映されます。')
+    if pending:st.caption('未送信分も下の出力に含まれます。サーバーの休止・再起動で失われる可能性があるため、通信エラー時は出力して保管してください。')
+    exported={'schema_version':LOG_SCHEMA,'application':'薬局比較','build':BUILD,'exported_at':now(),
+        'filters':{'category':category,'status':status,'days':days},'event_count':len(rows),
+        'storage':{'pending_upload_count':pending,'upload_error':audit.upload_error,'last_uploaded_at':audit.last_uploaded_at},
+        'duration_unit':'milliseconds','events':rows}
+    data=json.dumps(exported,ensure_ascii=False,indent=2)
+    text_lines=['薬局比較 作業ログ',f'出力日時: {exported["exported_at"]}',f'対象: {names[category]} / {statuses[status]} / {len(rows)}件','所要時間の単位: ms','']
+    for e in rows:
+        text_lines.append(f'{e["started_at"]} | {names.get(e["category"],e["category"])} | {e["action"]} | {statuses.get(e["status"],e["status"])} | {e["duration_ms"]}ms | {e["status_detail"]}')
+        text_lines.append('  '+json.dumps(e['context'],ensure_ascii=False))
+    x,y=st.columns(2)
+    suffix=datetime.now(JST).strftime('%Y%m%d_%H%M%S')
+    x.download_button('作業ログ JSONを出力',data,f'pharmacy_work_log_{suffix}.json','application/json',key='download_work_json',on_click='ignore')
+    y.download_button('作業ログ TXTを出力','\n'.join(text_lines),f'pharmacy_work_log_{suffix}.txt','text/plain',key='download_work_txt',on_click='ignore')
+    if rows:
+        st.dataframe([{'開始日時':e['started_at'],'分類':names.get(e['category'],e['category']),'作業':e['action'],'状態':statuses.get(e['status'],e['status']),
+            '内容':e['status_detail'],'所要時間(ms)':e['duration_ms'],'対象地域':e['context'].get('region',''),'実行ID':e['run_id']} for e in rows[-100:][::-1]],hide_index=True,width='stretch')
+    with st.expander('記録内容と所要時間の読み方'):
+        st.write('UI・UX：画面切替、比較条件、検索文字数、地図操作、操作後の描画、長時間処理、ブラウザーエラー。')
+        st.write('データ取得：公開資料の取得・解析、地域・薬局ごとの処理、座標確認、駅情報、DB通信、保存件数、停止・再開。')
+        st.write('duration_msは各作業の実測時間です。画面の操作から次の描画までの時間はネットワークの完了時間とは異なります。開始のみの記録は、サーバー中断などで完了を確認できない作業です。')
 
 
 def main():
     st.set_page_config(page_title='薬局比較',page_icon='🚉',layout='wide',initial_sidebar_state='collapsed')
     st.html('<style>'+OUTER_CSS+'</style>')
-    config=settings()
-    if not config['url'] or not config['secret_key']:
-        st.title('薬局比較');st.info('SupabaseのURLとサーバー用キーをStreamlitのSecretsへ設定してください。')
-        st.code('SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"\nSUPABASE_SECRET_KEY = "YOUR_SERVER_SECRET_KEY"',language='toml');return
+    st.html('<section class="page-hero"><span class="hero-label">PHARMACY EXPLORER</span><h1>薬局比較</h1><p>公開料金と薬局の場所を、同じ条件で比較。</p></section>')
+    config=settings();audit=None;store=None;dataset=None;error=''
     try:
-        store=SupabaseStore(**config)
-        dataset=read_data(config['url'],digest(config['secret_key']),config['secret_key'])
-    except DatabaseError as e:
-        st.error(str(e))
-        if st.button('再読み込み'):read_data.clear();st.rerun()
-        return
-    map_tab,data_tab=st.tabs(['薬局比較','データ取得・更新'])
-    with map_tab:
-        if not dataset['pharmacies']:st.info('「データ取得・更新」で地域を選び、取得を開始してください。')
-        elif not dataset['rates']['basic'] or not dataset['rates']['regional'] or not {'cooperation','digital'}<=dataset['rates'].keys():st.info('「データ取得・更新」内の料金マスタを登録してください。')
-        else:
-            available=[r for r in REGIONS if any(p['region']==r for p in dataset['pharmacies'])]
-            scope=st.selectbox('表示地域',['保存済みの全地域']+available,index=available.index('品川区')+1 if '品川区' in available else 0)
-            view=copy.deepcopy(dataset)
-            if scope!='保存済みの全地域':view['pharmacies']=[p for p in dataset['pharmacies'] if p['region']==scope]
-            # 原本から消えた店は履歴を保持したまま比較から除外。
-            view['pharmacies']=[p for p in view['pharmacies'] if not p.get('sourceMissing')]
-            view['viewRegion']=scope
-            st.iframe(build_document(view),height=950,alt=scope+'の薬局と駅を地図・公開料金で比較')
-    with data_tab:collection_panel(config,dataset)
+        audit=work_log(config.get('url',''),config.get('secret_key',''))
+        st.session_state['_work_log']=audit
+        st.session_state.setdefault('_log_session',uuid.uuid4().hex)
+        st.session_state['_log_project']=config.get('url','')
+    except (sqlite3.Error,OSError):error='作業ログの保存領域を利用できません。'
+    tabs=st.tabs(['薬局比較','データ取得・更新','設定'],key='main_tabs',on_change='rerun')
+    selected=st.session_state.get('main_tabs','薬局比較')
+    previous=st.session_state.get('_active_tab')
+    if previous!=selected:
+        clock=time.monotonic();last=st.session_state.get('_active_tab_at',clock)
+        if audit:
+            audit.record('ui','tab.change','ok','表示タブを変更',duration_ms=(clock-last)*1000,context={'from_tab':previous,'to_tab':selected,'duration_kind':'previous_tab_dwell'},run_id=st.session_state.get('_log_session',''))
+        st.session_state['_active_tab']=selected;st.session_state['_active_tab_at']=clock
+    if config.get('url') and config.get('secret_key'):
+        try:
+            store=SupabaseStore(**config);store.audit=audit
+            if audit:audit.sink=store.persist_work_logs
+            with trace(audit,'database','dataset.load') as result:
+                dataset=read_data(config['url'],digest(config['secret_key']),config['secret_key'],audit)
+                result.update(pharmacy_count=len(dataset['pharmacies']),station_count=len(dataset['stations']))
+        except DatabaseError as exc:
+            error=str(exc)
+            if audit:audit.record('system','connection.configure','error',error)
+    else:error='SupabaseのURLとサーバー用キーをStreamlitのSecretsへ設定してください。'
+    with tabs[0]:
+        if error:st.error(error)
+        if dataset is not None:
+            if not dataset['pharmacies']:st.info('「データ取得・更新」で地域を選び、取得を開始してください。')
+            elif not dataset['rates']['basic'] or not dataset['rates']['regional'] or not {'cooperation','digital'}<=dataset['rates'].keys():st.info('「データ取得・更新」内の料金マスタを登録してください。')
+            else:
+                available=[r for r in REGIONS if any(p['region']==r for p in dataset['pharmacies'])]
+                options=['保存済みの全地域']+available
+                if st.session_state.pop('_reset_comparison_scope',False):st.session_state['comparison_scope']=options[0]
+                if st.session_state.get('comparison_scope') not in options:st.session_state['comparison_scope']=options[0]
+                scope=st.selectbox('表示地域',options,key='comparison_scope')
+                if st.session_state.get('_scope_last')!=scope:
+                    log_action('scope.change','比較する地域を変更',{'region':scope});st.session_state['_scope_last']=scope
+                view=copy.deepcopy(dataset)
+                if scope!='保存済みの全地域':view['pharmacies']=[p for p in dataset['pharmacies'] if p['region']==scope]
+                view['pharmacies']=[p for p in view['pharmacies'] if not p.get('sourceMissing')]
+                view['viewRegion']=scope
+                st.caption(f"保存済み {len(dataset['pharmacies']):,}薬局｜選択地域 {len(view['pharmacies']):,}薬局。料金未記載の薬局は地図内の比較条件で表示できます。")
+                render_comparison(view,audit)
+    with tabs[1]:
+        if dataset is not None:collection_panel(config,dataset)
+        else:st.info(error or '接続情報を確認してください。')
+    with tabs[2]:settings_panel(config,audit,store)
 
 if __name__=='__main__':main()
