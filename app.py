@@ -28,7 +28,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-BUILD = '6.6'
+BUILD = '6.7'
 JST = timezone(timedelta(hours=9))
 GOV = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/kijyun.html'
 STATION_API = 'https://express.heartrails.com/api/json'
@@ -1423,6 +1423,16 @@ body,.workspace,.searchbar,.price-filterbar{background:#fff!important;color:var(
  #detail .fee-summary strong{font-size:19px!important}
  #detail .breakdown > summary{font-size:9px}
 }
+/* BUILD 6.7: compact fee filters leave space at the lower right on phones. */
+@media(max-width:760px){
+ .price-filterbar{justify-content:flex-start!important;padding:6px 4px!important;gap:0!important}
+ .price-filters{width:min(246px,calc(100% - 76px))!important;max-width:246px!important;
+   flex:0 1 auto!important;min-width:0!important;margin:0!important;padding:2px!important;gap:2px!important}
+ .price-filters button{flex:1 1 0%!important;min-width:0!important;min-height:34px!important;
+   padding:6px 4px!important;font-size:10px!important;gap:4px!important;justify-content:center}
+ .price-filters .price-dot{width:5px;height:5px;flex-shrink:0}
+}
+
 """
 UI_JS = r"""'use strict';
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
