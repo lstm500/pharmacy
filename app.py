@@ -28,7 +28,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-BUILD = '6.4'
+BUILD = '6.5'
 JST = timezone(timedelta(hours=9))
 GOV = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/kijyun.html'
 STATION_API = 'https://express.heartrails.com/api/json'
@@ -1098,19 +1098,103 @@ html,body,[data-testid="stApp"],[data-testid="stAppViewContainer"],[data-testid=
  [data-testid="stTabs"] [role="tab"] p{font-size:clamp(10px,3vw,13px)!important;white-space:nowrap!important}
  .st-key-comparison_top_controls .comparison-control-caption{font-size:11px}
 }
+
+/* BUILD 6.5 | Calm unified light theme for collection and settings. */
+:root,html,body,[data-testid="stApp"]{
+ color-scheme:light!important;
+ --primary-color:#317b62!important;--text-color:#2c5141!important;
+ --secondary-background-color:#f3f8f5!important;--background-color:#ffffff!important;
+ --border-color:#d9e8de!important;
+}
+.stApp,[data-testid="stMain"],[data-testid="stAppViewContainer"]{background:#fff!important;color:#2c5141!important}
+[data-testid="stMarkdownContainer"] p,[data-testid="stMarkdownContainer"] li,
+[data-testid="stCaptionContainer"],[data-testid="stCaptionContainer"] p,
+[data-testid="stWidgetLabel"] p,[data-testid="stExpander"] summary{color:#486b5a!important}
+[data-testid="stMarkdownContainer"] strong{color:#2f634d!important}
+[data-testid="stButton"] button,[data-testid="stDownloadButton"] button,
+[data-testid="stFormSubmitButton"] button,[data-testid="stPopover"] button{
+ background:#f3f8f5!important;color:#2c6550!important;
+ border:1px solid #d6e7dd!important;border-radius:10px!important;
+ box-shadow:none!important;font-weight:550!important;
+}
+[data-testid="stButton"] button:hover,[data-testid="stDownloadButton"] button:hover,
+[data-testid="stFormSubmitButton"] button:hover{
+ background:#e6f3ea!important;color:#23593f!important;border-color:#b8d8c6!important;
+}
+button[data-testid="stBaseButton-primary"],button[kind="primary"],
+[data-testid="stButton"] button[data-testid="stBaseButton-primary"]{
+ background:#347f64!important;color:#ffffff!important;border-color:#347f64!important;
+}
+button[data-testid="stBaseButton-primary"]:hover,button[kind="primary"]:hover{
+ background:#286d54!important;color:#ffffff!important;
+}
+[data-testid="stButton"] button:disabled,[data-testid="stDownloadButton"] button:disabled{
+ opacity:1!important;background:#edf2ef!important;color:#73897d!important;
+ border-color:#e1e9e3!important;
+}
+[data-testid="stExpander"] details{
+ background:#f7faf8!important;border:1px solid #e0ebe4!important;
+ border-radius:10px!important;
+}
+[data-testid="stExpander"] summary{background:#f7faf8!important}
+[data-testid="stExpander"] summary:hover{background:#eef6f0!important}
+[data-testid="stCheckbox"] input,[data-baseweb="checkbox"] input{accent-color:#347f64!important}
+[data-testid="stCheckbox"] [role="checkbox"][aria-checked="true"],
+[data-baseweb="checkbox"] [aria-checked="true"]{background-color:#347f64!important;border-color:#347f64!important}
+[data-baseweb="tag"],[data-testid="stMultiSelect"] [data-baseweb="tag"],
+[data-testid="stMultiSelect"] [data-baseweb="tag"] span{
+ background:#e5f2e9!important;color:#2a6952!important;border-radius:6px!important;
+}
+[data-testid="stMultiSelect"] [data-baseweb="tag"] svg{fill:#376d56!important;color:#376d56!important}
+[data-baseweb="popover"],[role="listbox"],[data-baseweb="menu"],
+[data-baseweb="select"] [role="option"]{background:#ffffff!important;color:#2b5644!important}
+[role="option"][aria-selected="true"],
+[data-baseweb="menu"] [aria-selected="true"]{background:#e6f2e9!important;color:#245e45!important}
+[data-testid="stAlert"], [data-testid="stNotification"]{
+ background:#f1f8f2!important;color:#2e654c!important;border:1px solid #d4e8d8!important;
+}
+[data-testid="stProgress"] [role="progressbar"]{background:#e7f1e8!important}
+[data-testid="stProgress"] [role="progressbar"]>div{background:#498c70!important}
+[data-testid="stDataFrame"],[data-testid="stDataEditor"]{
+ background:#ffffff!important;color:#2c5141!important;
+ border:1px solid #dce9df!important;border-radius:10px!important;overflow:hidden;
+}
+[data-testid="stDataFrame"] *,[data-testid="stDataEditor"] *{
+ --background-color:#ffffff!important;--text-color:#2c5141!important;
+}
+.ph-soft-table-wrap{background:#fff;max-width:100%;overflow:auto;max-height:440px;
+ border:1px solid #dbe8df;border-radius:12px;box-shadow:0 1px 4px #456d5410;margin:7px 0 14px}
+.ph-soft-table{width:100%;min-width:640px;border-spacing:0;border-collapse:separate;
+ color:#2c5141;background:#fff;font-size:12px;line-height:1.6}
+.ph-soft-table th{position:sticky;top:0;z-index:1;background:#eaf4ed;color:#2b684f;
+ font-weight:650;text-align:left;padding:11px 12px;border-bottom:1px solid #cde2d4;
+ white-space:nowrap}
+.ph-soft-table td{padding:9px 12px;border-bottom:1px solid #e8f0ea;white-space:nowrap;
+ color:#3e6452;background:#ffffff}
+.ph-soft-table tr:nth-child(even) td{background:#f8fbf9}
+.ph-soft-table tr:hover td{background:#f0f7f2}
+.ph-soft-table td:first-child,.ph-soft-table th:first-child{position:sticky;left:0;z-index:2}
+.ph-soft-table td:first-child{font-weight:600;color:#2d5d47}
+.ph-soft-table thead th:first-child{z-index:3}
+.ph-soft-table-hint{font-size:11px;color:#688579;margin:4px 0 6px}
+@media(max-width:768px){
+ .ph-soft-table{font-size:11px;min-width:660px}
+ .ph-soft-table th,.ph-soft-table td{padding:8px 10px}
+ .ph-soft-table-wrap{max-height:330px}
+}
 """
 UI_HTML = r"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>薬局比較</title><meta name="description" content="@@REGION@@の薬局を地図と公開料金で比較。"><link rel="stylesheet" href="vendor/leaflet.css"><link rel="stylesheet" href="style.css"></head><body>
 <header><a class="brand" href="#map"><span class="brand-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5a5 5 0 017 7l-4 4a5 5 0 01-7-7l4-4z" stroke="currentColor" stroke-width="2"/><path d="M7 8l7 7" stroke="currentColor" stroke-width="2"/></svg></span><span>薬局比較</span></a><span class="header-note">公開料金で、選択肢が見える。</span><div class="header-right"><span class="live-dot"></span><span>@@REGION@@</span><button class="text-button" id="sourceBtn">データについて ↗</button></div></header>
-<main><section class="workspace"><div class="toolbar"><div class="page-title"><span class="eyebrow">PHARMACY EXPLORER</span><h1>薬局を、地図で比較。</h1></div><div class="tabs" role="tablist" aria-label="表示方法"><button id="mapTab" class="active" role="tab" aria-selected="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 4l5-2 6 2 5-2v14l-5 2-6-2-5 2zM7 2v14M13 4v14"/></svg>地図</button><button id="listTab" role="tab" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4h10M7 10h10M7 16h10M2 4h1M2 10h1M2 16h1"/></svg>価格順の一覧</button></div><div class="toolbar-end"><label class="burden">負担割合 <select id="burden"><option value="0.3">3割</option><option value="0.2">2割</option><option value="0.1">1割</option><option value="1">10割</option></select></label><button id="conditionsBtn" class="condition-button" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h16M2 15h16M7 2v6M13 12v6"/></svg>比較条件</button></div></div>
+<main><section class="workspace"><div class="toolbar"><div class="page-title"><span class="eyebrow">PHARMACY EXPLORER</span><h1>薬局を、地図で比較。</h1></div><div class="tabs" role="tablist" aria-label="表示方法"><button id="mapTab" class="active" role="tab" aria-selected="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 4l5-2 6 2 5-2v14l-5 2-6-2-5 2zM7 2v14M13 4v14"/></svg>地図</button><button id="listTab" role="tab" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4h10M7 10h10M7 16h10M2 4h1M2 10h1M2 16h1"/></svg>価格順の一覧</button></div><div class="toolbar-end"><label class="burden">負担割合 <select id="burden"><option value="0.3">3割</option><option value="0.2">2割</option><option value="0.1">1割</option><option value="1">10割</option></select></label><button id="conditionsBtn" class="condition-button" hidden aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h16M2 15h16M7 2v6M13 12v6"/></svg>比較条件</button></div></div>
 <div class="conditions" id="conditionsPanel" hidden><span class="condition-title">小計に含める料金</span><span class="fixed-condition">② 基本料金</span><label><input type="checkbox" id="regional" checked>③ 地域への薬の供給体制</label><label><input type="checkbox" id="cooperation">③ 災害などへの連携体制</label><label><input type="checkbox" id="digital">③ 電子的な情報連携（月1回）</label><label class="missing-option"><input type="checkbox" id="includeMissing">②または③地域供給が未記載の薬局も表示<span id="missingCount"></span></label></div>
 <div class="scope-note"><span class="scope-tag">比較の範囲</span><span>②の基本料金 ＋ 選択した③の追加料金<span class="scope-desktop">。薬代や説明などの料金は含みません。</span></span><button id="explainBtn" class="text-button">総額とは異なります ⓘ</button></div>
 <div class="content-area"><div class="searchbar"><label class="search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l5 5"/></svg><input id="search" type="search" placeholder="薬局名・町名で検索" aria-label="薬局名・町名で検索"></label><button class="filter-toggle" id="officialFilter" aria-pressed="false">公式サイト照合済み <span id="officialCount">9</span></button><div class="inventory"><span id="allCount">229薬局</span><span class="count" id="resultCount" aria-live="polite"></span></div></div>
 
-<div id="mapView" class="map-layout"><div class="map-wrap"><div id="map" aria-label="@@REGION@@の薬局地図"></div><div class="map-top-label"><span class="live-dot"></span> TOKYO <span class="station-key"><b>駅</b>紺色は駅</span></div><div class="map-actions"><button id="locateMap" class="map-reset" type="button" title="現在地を取得して表示"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1v4M10 15v4M1 10h4M15 10h4"/></svg><span>現在地を取得</span></button><button id="resetMap" class="map-reset" title="@@REGION@@全体を表示"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="5"/><path d="M10 1v4M10 15v4M1 10h4M15 10h4"/></svg><span>全体を表示</span></button></div><div id="locationStatus" class="location-status" role="status" hidden></div><div class="map-legend"><div class="gradient-key"><span>低い</span><i class="gradient-scale" aria-label="比較小計が低い青色から高い赤色へのグラデーション"></i><span>高い</span><i class="unknown-key"></i><span>対象外</span></div><div class="legend-note">丸数字を押すと近くの薬局を選べます</div></div><div id="mapError" hidden>背景地図を読み込めません。地図の再読込をお試しください。</div><aside id="detail" class="detail" aria-live="polite"></aside></div></div>
+<div id="mapView" class="map-layout"><div class="map-wrap"><div id="map" aria-label="@@REGION@@の薬局地図"></div><div class="map-top-label"><span class="live-dot"></span> TOKYO <span class="station-key"><b>駅</b>紺色は駅</span></div><div class="map-actions" aria-hidden="true"><button id="locateMap" class="map-reset" type="button" title="現在地を取得して表示"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1v4M10 15v4M1 10h4M15 10h4"/></svg><span>現在地を取得</span></button><button id="resetMap" class="map-reset" title="@@REGION@@全体を表示"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="5"/><path d="M10 1v4M10 15v4M1 10h4M15 10h4"/></svg><span>全体を表示</span></button></div><div id="locationStatus" class="location-status" role="status" hidden></div><div class="map-legend"><div class="gradient-key"><span>低い</span><i class="gradient-scale" aria-label="比較小計が低い青色から高い赤色へのグラデーション"></i><span>高い</span><i class="unknown-key"></i><span>対象外</span></div><div class="legend-note">丸数字を押すと近くの薬局を選べます</div></div><div id="mapError" hidden>背景地図を読み込めません。地図の再読込をお試しください。</div><aside id="detail" class="detail" aria-live="polite"></aside><button id="detailCloseButton" type="button" aria-label="薬局の詳細を閉じる" title="閉じる">×</button></div></div>
 <div class="price-filterbar"><div class="price-filters" role="group" aria-label="料金による絞り込み"><button id="priceAll" class="active" aria-pressed="true">すべて</button><button id="priceLow" aria-pressed="false"><i class="price-dot cheap"></i>安めのみ</button><button id="priceHigh" aria-pressed="false"><i class="price-dot costly"></i>高めのみ</button></div><span class="price-filter-note" id="priceFilterNote"></span><span class="coverage-note" id="coverageNote"></span></div>
 <div id="listView" hidden><div class="list-top"><div><span class="eyebrow">PRICE COMPARISON</span><h2>公開項目を、同じ基準で。</h2><p>同額は同順位。表示額は窓口の総額ではありません。</p></div><label>並び順 <select id="sort"><option value="asc">安い順</option><option value="desc">高い順</option><option value="name">名前順</option></select></label></div><div class="table-scroll"><table class="ranking"><thead><tr><th>順位</th><th>薬局 / 所在地</th><th>② 基本料金</th><th>③ 選択中の追加料金</th><th>比較小計<span id="burdenLabel">（3割換算）</span></th><th>操作</th></tr></thead><tbody id="rankingBody"></tbody></table></div><div class="no-results" id="noResults" hidden>一致する薬局がありません。</div></div></div></section>
 <footer class="footnotes"><span>届出：<span id="sourceDate"></span> ｜ 点数施行：<span id="rateDate"></span></span><span class="footer-extra">公開データに基づく比較・地域ごとに更新</span><button class="text-button" id="exportBtn">CSVを保存 ↓</button></footer></main>
-<div id="compareBar" class="compare-bar" hidden><div><strong id="compareCount">0店舗を選択中</strong><span>最大3店舗を横並びで比較</span></div><button id="clearCompare" class="text-button">解除</button><button id="showCompare" class="primary">比較する →</button></div>
+<div id="compareBar" class="compare-bar" hidden hidden><div><strong id="compareCount">0店舗を選択中</strong><span>最大3店舗を横並びで比較</span></div><button id="clearCompare" class="text-button">解除</button><button id="showCompare" class="primary">比較する →</button></div>
 <dialog id="modal"><div class="modal-header"><h2 id="modalTitle"></h2><button id="closeModal" aria-label="閉じる">×</button></div><div id="modalBody"></div></dialog>
 <script src="vendor/leaflet.js"></script><script src="app.js"></script></body></html>
 """
@@ -1226,6 +1310,74 @@ html,body{max-width:100%;overflow-x:hidden;-webkit-text-size-adjust:100%;backgro
  .footnotes{height:auto;min-height:33px;flex-wrap:wrap;padding:7px 10px!important;gap:5px}
  .footnotes .footer-extra{display:none}
 }
+
+/* BUILD 6.5 | Warm sage palette and an unobtrusive map detail panel. */
+:root{
+ --ink:#254e3f;--muted:#688378;--line:#dcebe3;
+ --accent:#317e65;--soft:#eaf5ef;--green:#358a70;
+ --paper:#fff;--shadow:0 7px 24px #31513b19;
+}
+body,.workspace,.searchbar,.price-filterbar{background:#fff!important;color:var(--ink)!important}
+.toolbar{background:#fff!important;min-height:48px!important}
+.condition-button,#conditionsBtn,#conditionsPanel,.scope-note,
+#compareBar,.map-actions,.results-rail,#listView,#detail [data-add],
+#detail .group-add,#detail .close-detail{display:none!important}
+.burden,select,.detail,.price-filters button{color:var(--ink)}
+.price-filters button.active{background:#e6f3eb!important;border-color:#cfe4d8!important;color:#28624b!important}
+.price-filters button:hover{background:#f0f8f3!important}
+#detail:not(.hidden-card):not(:empty) + #detailCloseButton{display:flex!important}
+#detailCloseButton{
+ display:none!important;align-items:center;justify-content:center;
+ position:absolute;z-index:720;right:15px;top:15px;
+ width:27px;height:27px;padding:0;border-radius:50%;
+ border:1px solid #dce9df;background:#f2f8f3;color:#376954;
+ font-size:20px;line-height:1;font-weight:400;box-shadow:0 2px 8px #294c3a20;
+}
+#detailCloseButton:hover{background:#e1efe6}
+.map-wrap > #detail{
+ position:absolute!important;left:auto!important;right:9px!important;
+ top:9px!important;bottom:auto!important;
+ width:min(33%, 286px)!important;max-width:33%!important;
+ max-height:calc(100% - 18px)!important;overflow-y:auto!important;overflow-x:hidden!important;
+ padding:43px 10px 12px!important;
+ border:1px solid #dceadf!important;border-radius:12px!important;
+ background:#ffffffed!important;box-shadow:0 6px 24px #28453430!important;
+ color:var(--ink);scrollbar-width:thin;
+}
+#detail.hidden-card,#detail:empty{display:none!important}
+#detail .detail-head{display:flex;gap:4px;align-items:center;min-width:0}
+#detail h2{
+ font-size:clamp(11px,1.4vw,15px)!important;line-height:1.5!important;
+ font-weight:700;color:#245741;letter-spacing:0;margin:7px 0 5px;
+ overflow-wrap:anywhere;word-break:normal;
+}
+#detail address{font-size:9px;line-height:1.45;overflow-wrap:anywhere;color:#627d70}
+#detail .badge{font-size:8px;max-width:100%;white-space:normal;line-height:1.45;padding:3px 5px;color:#2d7257}
+#detail .fee-summary{background:#eaf5ee;border:1px solid #d5e9dc;margin:9px 0 8px;padding:8px 7px;border-radius:9px}
+#detail .fee-summary small{font-size:8px;line-height:1.5;color:#56816d}
+#detail .fee-summary strong{font-size:clamp(19px,2.4vw,26px)!important;line-height:1.5;color:#2b7459;overflow-wrap:anywhere}
+#detail .fee-summary strong span{font-size:10px;color:#2f745c}
+#detail .fee-summary p{font-size:8px;line-height:1.4;color:#607d6f;overflow-wrap:anywhere}
+#detail .breakdown{margin-top:4px;padding-top:3px}
+#detail .breakdown > summary{font-size:10px;line-height:1.5;color:#317b61;overflow-wrap:anywhere;cursor:pointer;padding:5px 0}
+#detail .fee-table{width:100%;font-size:9px;table-layout:fixed}
+#detail .fee-table td{white-space:normal!important;overflow-wrap:anywhere;padding:5px 2px}
+#detail .fee-table td:last-child{padding-left:3px;max-width:45%}
+#detail .group-back{padding:5px 0;border:0;color:#317b61;background:transparent;font-size:9px;white-space:normal}
+#detail .group-hint,#detail .small-note{font-size:9px;line-height:1.5;color:#678073}
+#detail .group-store{max-width:100%}
+#detail .group-store-main{max-width:100%;padding:7px 3px;gap:4px;overflow-wrap:anywhere;flex-wrap:wrap}
+#detail .group-store-name{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+#detail .group-store strong{font-size:11px;color:#317b61}
+#detail .group-store small{font-size:8px;overflow-wrap:anywhere}
+@media(max-width:520px){
+ .map-wrap > #detail{width:33%!important;max-width:33%!important;right:7px!important;top:7px!important;
+   max-height:calc(100% - 14px)!important;padding:39px 7px 9px!important;border-radius:10px!important}
+ #detailCloseButton{right:12px;top:12px;width:25px;height:25px;font-size:19px}
+ #detail h2{font-size:11px!important}
+ #detail .fee-summary strong{font-size:19px!important}
+ #detail .breakdown > summary{font-size:9px}
+}
 """
 UI_JS = r"""'use strict';
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1259,10 +1411,11 @@ function badge(x){return x.officialFeesUrl?'<span class="badge">公式ページ�
 function pointCell(n,desc=''){return n===null?'対象外':`${esc(n)}点${desc?`<small>${esc(desc)}</small>`:''}`;}
 function rows(x){const b=basic(x),r=regional(x),names=regs(x);return `<tr class="group"><th colspan="2">② 薬局の仕事の料金</th></tr><tr><td>基本料金<small>${esc(b||'基本料区分を確認できず')}</small></td><td>${b?basicRates[b]+'点':'未確認'}</td></tr><tr><td>薬の準備・確認・説明など</td><td>小計に含めず</td></tr><tr class="group"><th colspan="2">③ 薬局の体制への追加料金</th></tr><tr><td>地域への薬の供給体制<small>${esc(r||'この一覧上の届出なし')}</small></td><td>${r?(Object.hasOwn(regionalRates,regionKey(r))?regionalRates[regionKey(r)]+'点':'未確認'):'届出なし'}${!$('regional').checked?'<small>比較から除外</small>':''}</td></tr><tr><td>災害などへの連携体制<small>連携強化加算</small></td><td>${names.includes('連携強化加算')?appRates.cooperation+'点':'届出なし'}${!$('cooperation').checked?'<small>比較から除外</small>':''}</td></tr><tr><td>電子的な情報連携<small>電子的調剤情報連携体制整備加算・月1回</small></td><td>${names.includes('電子的調剤情報連携体制整備加算')?appRates.digital+'点':'届出なし'}${!$('digital').checked?'<small>比較から除外</small>':''}</td></tr>`;}
 function regNote(x){return `<details><summary>その他を含む公開届出 ${x.registrations.filter(r=>r.name).length}項目</summary><p class="small-note">以下は届出の記録です。すべてが毎回請求されるわけではありません。上の比較小計には、選択した項目だけを含めています。</p><ul class="reg-list">${x.registrations.filter(r=>r.name).map(r=>`<li>${esc(r.name)}<br>算定開始：${esc(r.start)}</li>`).join('')}</ul></details>`;}
-function card(x){const p=points(x);return `<div class="detail-head">${badge(x)}<button class="close-detail" data-close-detail aria-label="薬局カードを閉じる">×</button></div><h2>${esc(x.name)}</h2><address>${esc(x.address)}</address><div class="fee-summary"><small>公開項目の比較小計 · ${Number($('burden').value)*10}割換算</small><strong>${p===null?'比較対象外':amount(p)+'<span>円</span>'}</strong><p>${p===null?'未確認・特殊な算定条件のため順位対象外':`${p}点 × 10円 × ${Number($('burden').value)*10}割 ｜ 窓口の総額ではありません`}</p></div><button class="primary" data-add="${esc(x.code)}">${chosen.has(x.code)?'✓ 比較に追加済み · 外す':'＋ この薬局を比較する'}</button><details class="breakdown" ${innerWidth>760?'open':''}><summary>②・③の料金内訳と出典</summary><table class="fee-table">${rows(x)}</table>${links(x)}<p class="small-note">${x.officialFeesUrl?'公式照合：2026/10/28。':'公式サイトの料金は未照合。'}届出基準日：${esc(x.snapshotDate||SNAPSHOT)}。${x.geocoded?'位置は住所検索による目安です。':''}</p>${regNote(x)}</details>`;}
-function bindAdds(root){root.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>toggleCompare(b.dataset.add));root.querySelectorAll('[data-group-back]').forEach(b=>b.onclick=()=>showGroup(groupCodes.map(id=>data.find(x=>x.code===id)).filter(Boolean)));root.querySelectorAll('[data-close-detail]').forEach(b=>b.onclick=()=>{if($('modal').open){$('modal').close();return;}selected=null;groupCodes=[];detailMode='closed';$('detail').classList.add('hidden-card');renderMap();renderRail();});}
+function card(x){const p=points(x);return `<div class="detail-head">${badge(x)}<button class="close-detail" data-close-detail aria-label="薬局カードを閉じる">×</button></div><h2>${esc(x.name)}</h2><address>${esc(x.address)}</address><div class="fee-summary"><small>公開項目の比較小計 · ${Number($('burden').value)*10}割換算</small><strong>${p===null?'比較対象外':amount(p)+'<span>円</span>'}</strong><p>${p===null?'未確認・特殊な算定条件のため順位対象外':`${p}点 × 10円 × ${Number($('burden').value)*10}割 ｜ 窓口の総額ではありません`}</p></div><details class="breakdown"><summary>②・③の料金内訳と出典</summary><table class="fee-table">${rows(x)}</table>${links(x)}<p class="small-note">${x.officialFeesUrl?'公式照合：2026/10/28。':'公式サイトの料金は未照合。'}届出基準日：${esc(x.snapshotDate||SNAPSHOT)}。${x.geocoded?'位置は住所検索による目安です。':''}</p>${regNote(x)}</details>`;}
+function bindAdds(root){root.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>toggleCompare(b.dataset.add));root.querySelectorAll('[data-group-back]').forEach(b=>b.onclick=()=>showGroup(groupCodes.map(id=>data.find(x=>x.code===id)).filter(Boolean)));root.querySelectorAll('[data-close-detail]').forEach(b=>b.onclick=()=>{if($('modal').open){$('modal').close();return;}closeDetailPanel();});}
+function closeDetailPanel(){selected=null;groupCodes=[];detailMode='closed';const panel=$('detail');panel.classList.add('hidden-card');panel.innerHTML='';renderMap();renderRail();}
 function groupBack(){return groupCodes.length>1?`<button class="group-back" data-group-back>← この付近の${groupCodes.length}薬局に戻る</button>`:'';}
-function showGroup(xs){groupCodes=xs.map(x=>x.code);detailMode='group';$('detail').classList.remove('hidden-card');const stores=[...xs].sort((a,b)=>(points(a)??1e6)-(points(b)??1e6)||a.name.localeCompare(b.name,'ja'));$('detail').innerHTML=`<div class="detail-head"><span class="badge gov">この付近の薬局</span><button class="close-detail" data-close-detail aria-label="薬局カードを閉じる">×</button></div><h2>${stores.length}店舗をまとめて確認</h2><p class="group-hint">薬局名を押すと料金の内訳が開きます。</p><div class="group-stores">${stores.map(x=>`<div class="group-store ${selected===x.code?'active':''}"><button class="group-store-main" data-group-store="${esc(x.code)}"><span class="group-store-name">${esc(x.name)}<small>${esc(x.address.replace('品川区',''))}</small></span><strong>${esc(price(x))}<small>比較小計</small></strong></button><button class="group-add" data-add="${esc(x.code)}" aria-label="${esc(x.name)}を比較${chosen.has(x.code)?'から外す':'に追加'}">${chosen.has(x.code)?'✓ 選択中':'＋ 比較'}</button></div>`).join('')}</div><p class="small-note">表示額は②の基本料金＋選択した③の小計です。窓口の総額ではありません。</p>`;$('detail').scrollTop=0;bindAdds($('detail'));$('detail').querySelectorAll('[data-group-store]').forEach(b=>b.onclick=()=>selectStore(b.dataset.groupStore));}
+function showGroup(xs){groupCodes=xs.map(x=>x.code);detailMode='group';$('detail').classList.remove('hidden-card');const stores=[...xs].sort((a,b)=>(points(a)??1e6)-(points(b)??1e6)||a.name.localeCompare(b.name,'ja'));$('detail').innerHTML=`<div class="detail-head"><span class="badge gov">この付近の薬局</span><button class="close-detail" data-close-detail aria-label="薬局カードを閉じる">×</button></div><h2>${stores.length}店舗をまとめて確認</h2><p class="group-hint">薬局名を押すと料金の内訳が開きます。</p><div class="group-stores">${stores.map(x=>`<div class="group-store ${selected===x.code?'active':''}"><button class="group-store-main" data-group-store="${esc(x.code)}"><span class="group-store-name">${esc(x.name)}<small>${esc(x.address.replace('品川区',''))}</small></span><strong>${esc(price(x))}<small>比較小計</small></strong></button></div>`).join('')}</div><p class="small-note">表示額は②の基本料金＋選択した③の小計です。窓口の総額ではありません。</p>`;$('detail').scrollTop=0;bindAdds($('detail'));$('detail').querySelectorAll('[data-group-store]').forEach(b=>b.onclick=()=>selectStore(b.dataset.groupStore));}
 function selectStore(code,move=false){detailMode='store';if(!groupCodes.includes(code))groupCodes=[];selected=code;const x=data.find(x=>x.code===code);if(!x)return;$('detail').classList.remove('hidden-card');$('detail').innerHTML=groupBack()+card(x);$('detail').scrollTop=0;bindAdds($('detail'));if(move&&map&&x.lat)map.setView([x.lat,x.lon],Math.max(16,map.getZoom()));renderMap();renderRail();}
 function renderRail(){if(!$('railCards'))return;const previousScroll=$('railCards').scrollTop;const xs=filtered().filter(x=>x.lat&&(!map||map.getBounds().contains([x.lat,x.lon]))).sort((a,b)=>(points(a)??1e6)-(points(b)??1e6)||a.name.localeCompare(b.name,'ja'));$('railCount').textContent=xs.length+'店舗';$('railCards').innerHTML=xs.slice(0,60).map(x=>`<button class="rail-card ${selected===x.code?'active':''}" data-rail-store="${esc(x.code)}"><span class="store-icon">✚</span><span class="store-text"><strong>${esc(x.name)}</strong><span class="store-address">${esc(x.address.replace('品川区',''))}</span></span><span class="store-price">${points(x)===null?'—':amount(points(x))+'<small>円</small>'}<em>比較小計</em></span></button>`).join('')||(xs.length===0?'<p class="no-results">この範囲に薬局がありません。<br>地図を動かして探せます。</p>':'');$('railCards').scrollTop=previousScroll;$('railCards').querySelectorAll('[data-rail-store]').forEach(b=>b.onclick=()=>selectStore(b.dataset.railStore));}
 function renderMap(){if(!map)return;layer.clearLayers();markers.clear();const groups=new Map(),zoom=map.getZoom(),size=zoom<15?70:zoom<17?58:40;function addSingle(x){const marker=L.marker([x.lat,x.lon],{icon:icon(x),title:x.name,keyboard:true,zIndexOffset:selected===x.code?1000:0}).on('click',()=>selectStore(x.code));marker.addTo(layer);marker.getElement()?.setAttribute('aria-label',x.name+'の料金を見る');markers.set(x.code,marker);}const visibleBounds=map.getBounds().pad(.2);for(const x of filtered()){if(!x.lat||!x.lon||!visibleBounds.contains([x.lat,x.lon]))continue;const p=map.project([x.lat,x.lon],zoom),key=Math.floor(p.x/size)+','+Math.floor(p.y/size);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(x);}for(const xs of groups.values()){if(xs.length===1){addSingle(xs[0]);continue;}const lat=xs.reduce((s,x)=>s+x.lat,0)/xs.length,lon=xs.reduce((s,x)=>s+x.lon,0)/xs.length,known=xs.map(points).filter(p=>p!==null),average=known.length===xs.length?known.reduce((a,b)=>a+b,0)/known.length:null;const marker=L.marker([lat,lon],{icon:L.divIcon({className:'pin-shell',html:`<div class="cluster-pin ${xs.some(x=>x.code===selected)?'chosen':''}" style="--pin-color:${colorForPoints(average)}">${xs.length}</div>`,iconSize:[38,38],iconAnchor:[19,19]}),title:xs.length+'薬局を表示',keyboard:true});marker.on('click',()=>showGroup(xs));marker.addTo(layer);marker.getElement()?.setAttribute('aria-label',xs.length+'薬局の一覧を見る');}}
@@ -1282,7 +1435,7 @@ $('mapTab').onclick=()=>setView('map');$('listTab').onclick=()=>setView('list');
 const stationTrainIcon='<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="3" width="10" height="12" rx="3"/><path d="M5 9h10M8 15l-2 3M12 15l2 3M9 3v6"/><circle cx="8" cy="12" r=".6"/><circle cx="12" cy="12" r=".6"/></svg>';
 async function loadStationLandmarks(){try{const info={stations:PHARMACY_BOOTSTRAP.stations},stationLayer=L.layerGroup().addTo(map);map.createPane('stationLandmarks');const pane=map.getPane('stationLandmarks');pane.style.zIndex=620;pane.style.pointerEvents='none';function renderStations(){stationLayer.clearLayers();const zoom=map.getZoom();for(const station of info.stations){if(!map.getBounds().pad(.25).contains([station.lat,station.lon]))continue;const showName=zoom>=15||(station.major&&zoom>=13),html=`<div class="station-landmark ${station.major?'major':''}"><span class="station-symbol">${stationTrainIcon}</span>${showName?`<span class="station-label">${esc(station.name)}<small>駅</small></span>`:''}</div>`;L.marker([station.lat,station.lon],{interactive:false,keyboard:false,pane:'stationLandmarks',icon:L.divIcon({className:'station-shell',html,iconSize:[18,18],iconAnchor:[9,9]})}).addTo(stationLayer);}}renderStations();map.on('zoomend moveend',renderStations);map.attributionControl.addAttribution('駅: <a href="https://express.heartrails.com/" target="_blank" rel="noopener">HeartRails Express</a>');}catch(error){console.warn('駅情報を読み込めませんでした',error);}}
 function resetView(){if(!map)return;if(SCOPE==='品川区'){map.fitBounds([[35.582,139.692],[35.641,139.765]]);return;}const pts=data.filter(x=>x.lat&&x.lon).map(x=>[x.lat,x.lon]);if(pts.length)map.fitBounds(pts,{padding:[28,28],maxZoom:15});}
-async function init(){try{data=PHARMACY_BOOTSTRAP.pharmacies;$('sourceDate').textContent=[...new Set(data.map(x=>x.snapshotDate||SNAPSHOT))].sort().join(' / ');$('rateDate').textContent=[...new Set((PHARMACY_BOOTSTRAP.rateRows||[]).map(x=>x.valid_from))].sort().join(' / ')||'未登録';chosen=new Set([...chosen].filter(id=>data.some(x=>x.code===id)).slice(0,3));$('allCount').textContent=`${data.length}薬局`; $('officialCount').textContent=data.filter(x=>x.officialFeesUrl).length;if(window.L){map=L.map('map',{scrollWheelZoom:true}).setView([35.609,139.726],14);let loads=0,failures=0;const tiles=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,attribution:'Tiles &copy; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'});tiles.on('tileload',()=>{loads++;$('mapError').hidden=true;});tiles.on('tileerror',()=>{failures++;if(!loads&&failures>3)$('mapError').hidden=false;});tiles.addTo(map);map.createPane('placeLabels');map.getPane('placeLabels').style.zIndex=410;map.getPane('placeLabels').style.pointerEvents='none';const places=new Map();for(const x of data){const town=norm(x.address).match(/品川区(.+?)[一二三四五六七八九十0-9]+丁目/);if(town&&x.lat){if(!places.has(town[1]))places.set(town[1],[]);places.get(town[1]).push(x);}}for(const [name,xs] of places){if(!['大崎','大井','東品川','西五反田','東五反田','小山','戸越','旗の台','中延','西大井','上大崎','八潮','北品川'].includes(name))continue;L.marker([xs.reduce((s,x)=>s+x.lat,0)/xs.length,xs.reduce((s,x)=>s+x.lon,0)/xs.length],{interactive:false,keyboard:false,pane:'placeLabels',icon:L.divIcon({className:'place-name',html:esc(name),iconSize:[100,22],iconAnchor:[50,11]})}).addTo(map);}layer=L.layerGroup().addTo(map);loadStationLandmarks();map.on('zoomend moveend',()=>{renderMap();renderRail();});map.zoomControl.setPosition('topleft');setInitialView();const near=PHARMACY_BOOTSTRAP.ui_state?.nearby_center;if(Array.isArray(near)&&near.length===2)setTimeout(()=>showNearbyLocation(near[0],near[1]),100);else if(PHARMACY_BOOTSTRAP.ui_state?.locate_request)setTimeout(locateUser,100);}else{$('mapError').hidden=false;$('mapError').textContent='地図を読み込めません。一覧タブで比較できます。';}render();const first=data.find(x=>x.code==='0957704');if(first)selectStore(first.code);}catch(e){$('resultCount').textContent='データの読み込みに失敗しました。再読み込みしてください。';$('detail').innerHTML='<p>データを読み込めませんでした。</p>';}}
+async function init(){try{data=PHARMACY_BOOTSTRAP.pharmacies;$('sourceDate').textContent=[...new Set(data.map(x=>x.snapshotDate||SNAPSHOT))].sort().join(' / ');$('rateDate').textContent=[...new Set((PHARMACY_BOOTSTRAP.rateRows||[]).map(x=>x.valid_from))].sort().join(' / ')||'未登録';chosen=new Set([...chosen].filter(id=>data.some(x=>x.code===id)).slice(0,3));$('allCount').textContent=`${data.length}薬局`; $('officialCount').textContent=data.filter(x=>x.officialFeesUrl).length;if(window.L){map=L.map('map',{scrollWheelZoom:true}).setView([35.609,139.726],14);let loads=0,failures=0;const tiles=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,attribution:'Tiles &copy; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'});tiles.on('tileload',()=>{loads++;$('mapError').hidden=true;});tiles.on('tileerror',()=>{failures++;if(!loads&&failures>3)$('mapError').hidden=false;});tiles.addTo(map);map.createPane('placeLabels');map.getPane('placeLabels').style.zIndex=410;map.getPane('placeLabels').style.pointerEvents='none';const places=new Map();for(const x of data){const town=norm(x.address).match(/品川区(.+?)[一二三四五六七八九十0-9]+丁目/);if(town&&x.lat){if(!places.has(town[1]))places.set(town[1],[]);places.get(town[1]).push(x);}}for(const [name,xs] of places){if(!['大崎','大井','東品川','西五反田','東五反田','小山','戸越','旗の台','中延','西大井','上大崎','八潮','北品川'].includes(name))continue;L.marker([xs.reduce((s,x)=>s+x.lat,0)/xs.length,xs.reduce((s,x)=>s+x.lon,0)/xs.length],{interactive:false,keyboard:false,pane:'placeLabels',icon:L.divIcon({className:'place-name',html:esc(name),iconSize:[100,22],iconAnchor:[50,11]})}).addTo(map);}layer=L.layerGroup().addTo(map);loadStationLandmarks();map.on('zoomend moveend',()=>{renderMap();renderRail();});map.zoomControl.setPosition('topleft');setInitialView();const near=PHARMACY_BOOTSTRAP.ui_state?.nearby_center;if(Array.isArray(near)&&near.length===2)setTimeout(()=>showNearbyLocation(near[0],near[1]),100);else if(PHARMACY_BOOTSTRAP.ui_state?.locate_request)setTimeout(locateUser,100);}else{$('mapError').hidden=false;$('mapError').textContent='地図を読み込めません。一覧タブで比較できます。';}render();}catch(e){$('resultCount').textContent='データの読み込みに失敗しました。再読み込みしてください。';$('detail').innerHTML='<p>データを読み込めませんでした。</p>';}}
 const DEFAULT_MAP_ZOOM=14,DEFAULT_MAP_CENTER=[35.705,139.733];
 function setInitialView(){
  if(!map)return;
@@ -1343,6 +1496,7 @@ const originalFiltered=filtered;filtered=function(){const key=JSON.stringify([en
 const originalList=renderList;renderList=function(){if(view==='list')return originalList();};
 const originalSetView=setView;setView=function(next){originalSetView(next);if(next==='list')renderList();};
 
+$('detailCloseButton').onclick=closeDetailPanel;
 $('locateMap').onclick=locateUser;
 installPharmacyPhases();init();drawMunicipalBoundaries();attachPharmacyMap();
 function drawMunicipalBoundaries(){
@@ -1468,7 +1622,7 @@ def collection_panel(config,dataset):
         status=store.region_status()
         if status:
             st.subheader('地域別の更新状況')
-            st.dataframe([{'地域':r['region'],'資料基準日':r['snapshot_date'],'登録件数':r['count'],'座標未確認':r['unlocated'],'確認日時':r['checked_at'],'駅情報':r.get('station_issue') or '確認済み／更新対象外'} for r in status],hide_index=True,width='stretch')
+            render_soft_table([{'地域':r['region'],'資料基準日':r['snapshot_date'],'登録件数':r['count'],'座標未確認':r['unlocated'],'確認日時':r['checked_at'],'駅情報':r.get('station_issue') or '確認済み／更新対象外'} for r in status])
     except DatabaseError as e:st.error(str(e))
     with st.expander('料金マスタの確認・更新'):
         st.caption('届出の取得と料金改定は別です。既存の点数は自動推測で変更しません。施行日と公式出典を確認して保存してください。')
@@ -1498,6 +1652,25 @@ def collection_panel(config,dataset):
                     log_action('rates.validate','点数・施行日・公式出典URLの形式が不正',status='warning')
                     st.error('点数・施行日・HTTPSの公式出典URLを確認してください。')
                 except DatabaseError as e:st.error(str(e))
+
+
+def render_soft_table(rows):
+    """Read-only, horizontally scrollable table in the app's light palette."""
+    if not rows:
+        return
+    columns=list(rows[0].keys())
+    def cell(value):
+        if value is None:
+            return ''
+        if isinstance(value,float):
+            value=round(value,2)
+        return html_lib.escape(str(value),quote=True)
+    head=''.join('<th scope="col">'+cell(col)+'</th>' for col in columns)
+    body=''.join('<tr>'+''.join('<td>'+cell(row.get(col,''))+'</td>' for col in columns)+'</tr>' for row in rows)
+    hint='<p class="ph-soft-table-hint">表は横にスクロールできます。</p>' if len(columns)>=6 else ''
+    st.html(hint+'<div class="ph-soft-table-wrap" role="region" aria-label="データ一覧" tabindex="0">'
+        +'<table class="ph-soft-table"><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div>')
+
 
 # ── 設定：作業ログの確認・出力 ─────────────────────────────────────────────
 @st.fragment
@@ -1543,9 +1716,9 @@ def settings_panel(config,audit,store):
     diagnostic=performance_report(diagnostic_rows)
     candidates=diagnostic['summary']
     if candidates:
-        st.dataframe([{'操作・処理':x['action'],'対象':x['element_or_phase'],'端末':x['device'],'画面':x['scope'],
+        render_soft_table([{'操作・処理':x['action'],'対象':x['element_or_phase'],'端末':x['device'],'画面':x['scope'],
             '記録数':x['count'],'完了数':x['completed_count'],'中央値(ms)':x['p50_ms'],'95%点(ms)':x['p95_ms'],
-            '最大(ms)':x['max_ms'],'500ms超':x['over_500ms'],'未完了':x['incomplete'],'エラー':x['errors']} for x in candidates],hide_index=True,width='stretch')
+            '最大(ms)':x['max_ms'],'500ms超':x['over_500ms'],'未完了':x['incomplete'],'エラー':x['errors']} for x in candidates])
     else:st.info('計測ログはまだありません。スマホで操作した後、10秒ほど待ってログを更新してください。')
     diagnostic_export={'schema_version':LOG_SCHEMA,'application':'薬局比較','build':BUILD,'exported_at':now(),
         'period_days':days,'event_count':len(diagnostic_rows),'duration_unit':'milliseconds',
@@ -1569,8 +1742,8 @@ def settings_panel(config,audit,store):
     x.download_button('作業ログ JSONを出力',data,f'pharmacy_work_log_{suffix}.json','application/json',key='download_work_json',on_click='ignore')
     y.download_button('作業ログ TXTを出力','\n'.join(text_lines),f'pharmacy_work_log_{suffix}.txt','text/plain',key='download_work_txt',on_click='ignore')
     if rows:
-        st.dataframe([{'開始日時':e['started_at'],'分類':names.get(e['category'],e['category']),'作業':e['action'],'状態':statuses.get(e['status'],e['status']),
-            '内容':e['status_detail'],'所要時間(ms)':e['duration_ms'],'対象地域':e['context'].get('region',''),'実行ID':e['run_id']} for e in rows[-100:][::-1]],hide_index=True,width='stretch')
+        render_soft_table([{'開始日時':e['started_at'],'分類':names.get(e['category'],e['category']),'作業':e['action'],'状態':statuses.get(e['status'],e['status']),
+            '内容':e['status_detail'],'所要時間(ms)':e['duration_ms'],'対象地域':e['context'].get('region',''),'実行ID':e['run_id']} for e in rows[-100:][::-1]])
     with st.expander('記録内容と所要時間の読み方'):
         st.write('UI・UX：タッチ・クリック、入力待ち、イベント処理、描画安定、画面切替、比較条件、検索文字数、地図移動・タイル、長時間処理、ブラウザーエラー。')
         st.write('データ取得：公開資料の取得・解析、地域・薬局ごとの処理、座標確認、駅情報、DB通信、保存件数、停止・再開。')
