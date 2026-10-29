@@ -28,7 +28,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-BUILD = '6.5'
+BUILD = '6.6'
 JST = timezone(timedelta(hours=9))
 GOV = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/kijyun.html'
 STATION_API = 'https://express.heartrails.com/api/json'
@@ -771,6 +771,12 @@ def browser_log_changed():
     if not isinstance(value,dict):return
     if value.get('type')=='pharmacy.need_document':
         return
+    if value.get('type')=='pharmacy.location.failed':
+        # One denied/failed automatic attempt must not re-open the permission
+        # prompt merely because Streamlit redraws the component.
+        if value.get('token')==st.session_state.get('_comparison_locate_token'):
+            st.session_state.pop('_comparison_locate_token',None)
+        return
     if value.get('type')=='pharmacy.location':
         token=str(value.get('token') or '')
         if token!=st.session_state.get('_comparison_locate_token') or token==st.session_state.get('_comparison_location_ready_token'):
@@ -1182,6 +1188,78 @@ button[data-testid="stBaseButton-primary"]:hover,button[kind="primary"]:hover{
  .ph-soft-table th,.ph-soft-table td{padding:8px 10px}
  .ph-soft-table-wrap{max-height:330px}
 }
+/* BUILD 6.6: Explicit text colors inside controls and BaseWeb portal menus.
+   In dark OS themes, nested Streamlit <p>/<span> retained their dark-theme text color
+   even after the button or listbox background became light. */
+[data-testid="stButton"] button :is(p,span,div,strong,small),
+[data-testid="stDownloadButton"] button :is(p,span,div,strong,small),
+[data-testid="stFormSubmitButton"] button :is(p,span,div,strong,small),
+[data-testid="stPopover"] button :is(p,span,div,strong,small){
+ color:inherit!important;-webkit-text-fill-color:currentColor!important;
+}
+[data-testid="stButton"] button:disabled,
+[data-testid="stDownloadButton"] button:disabled,
+[data-testid="stFormSubmitButton"] button:disabled{
+ background:#edf3ee!important;color:#506c5d!important;border-color:#d5e2d8!important;
+}
+[data-testid="stButton"] button:disabled *,
+[data-testid="stDownloadButton"] button:disabled *,
+[data-testid="stFormSubmitButton"] button:disabled *{
+ color:#506c5d!important;-webkit-text-fill-color:#506c5d!important;
+}
+/* Dropdowns render in a portal outside their widget's own DOM subtree. */
+[data-baseweb="popover"] [role="listbox"],
+[data-baseweb="popover"] [data-baseweb="menu"],
+[data-baseweb="menu"],[role="listbox"]{
+ color-scheme:light!important;background-color:#ffffff!important;color:#294f3e!important;
+}
+[data-baseweb="popover"] [role="option"],
+[data-baseweb="menu"] [role="option"],
+[role="listbox"] [role="option"]{
+ opacity:1!important;background-color:#ffffff!important;color:#294f3e!important;
+ -webkit-text-fill-color:#294f3e!important;
+}
+[data-baseweb="popover"] [role="option"] *,
+[data-baseweb="menu"] [role="option"] *,
+[role="listbox"] [role="option"] *{
+ color:#294f3e!important;-webkit-text-fill-color:#294f3e!important;opacity:1!important;
+}
+[data-baseweb="popover"] [role="option"][aria-selected="true"],
+[data-baseweb="popover"] [role="option"][aria-selected="true"] *,
+[data-baseweb="menu"] [role="option"][aria-selected="true"],
+[data-baseweb="menu"] [role="option"][aria-selected="true"] *,
+[role="listbox"] [role="option"][aria-selected="true"],
+[role="listbox"] [role="option"][aria-selected="true"] *{
+ background-color:#e3f0e7!important;color:#245a43!important;
+ -webkit-text-fill-color:#245a43!important;
+}
+[data-baseweb="popover"] [role="option"]:hover,
+[data-baseweb="menu"] [role="option"]:hover,
+[role="listbox"] [role="option"]:hover{
+ background-color:#edf6ef!important;
+}
+/* Select input and its value need a visible foreground independent of the base theme. */
+[data-testid="stSelectbox"] [role="combobox"],
+[data-testid="stSelectbox"] [role="combobox"] *,
+[data-testid="stMultiSelect"] [role="combobox"],
+[data-testid="stMultiSelect"] [role="combobox"] *{
+ color:#294f3e!important;-webkit-text-fill-color:#294f3e!important;
+}
+[data-testid="stSelectbox"] input::placeholder,
+[data-testid="stMultiSelect"] input::placeholder{
+ color:#6a8173!important;-webkit-text-fill-color:#6a8173!important;opacity:1!important;
+}
+/* Stronger than color declarations on nested Streamlit/BaseWeb spans. */
+:root body [data-baseweb="popover"] [role="option"] :is(span,p,div,li,strong,small),
+:root body [data-baseweb="menu"] [role="option"] :is(span,p,div,li,strong,small),
+:root body [role="listbox"] [role="option"] :is(span,p,div,li,strong,small){
+ color:#294f3e!important;-webkit-text-fill-color:#294f3e!important;opacity:1!important;
+}
+:root body [data-baseweb="popover"] [role="option"][aria-selected="true"] :is(span,p,div,li,strong,small),
+:root body [data-baseweb="menu"] [role="option"][aria-selected="true"] :is(span,p,div,li,strong,small),
+:root body [role="listbox"] [role="option"][aria-selected="true"] :is(span,p,div,li,strong,small){
+ color:#245a43!important;-webkit-text-fill-color:#245a43!important;
+}
 """
 UI_HTML = r"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>薬局比較</title><meta name="description" content="@@REGION@@の薬局を地図と公開料金で比較。"><link rel="stylesheet" href="vendor/leaflet.css"><link rel="stylesheet" href="style.css"></head><body>
 <header><a class="brand" href="#map"><span class="brand-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5a5 5 0 017 7l-4 4a5 5 0 01-7-7l4-4z" stroke="currentColor" stroke-width="2"/><path d="M7 8l7 7" stroke="currentColor" stroke-width="2"/></svg></span><span>薬局比較</span></a><span class="header-note">公開料金で、選択肢が見える。</span><div class="header-right"><span class="live-dot"></span><span>@@REGION@@</span><button class="text-button" id="sourceBtn">データについて ↗</button></div></header>
@@ -1459,7 +1537,8 @@ function showNearbyLocation(lat,lon){
 function locateUser(){
  const button=$('locateMap'),status=$('locationStatus'),began=performance.now();
  const report=(message,error=false)=>{status.textContent=message;status.hidden=!message;status.classList.toggle('location-error',error);};
- if(!navigator.geolocation){report('このブラウザーは現在地取得に対応していません。',true);PHARMACY_PERF.log('location.result','warning','現在地取得非対応');return;}
+ const positionFailed=()=>{const token=PHARMACY_BOOTSTRAP.ui_state?.locate_request;if(token)parent.postMessage({type:'pharmacy.location.failed',token},'*');};
+ if(!navigator.geolocation){report('このブラウザーは現在地取得に対応していません。',true);positionFailed();PHARMACY_PERF.log('location.result','warning','現在地取得非対応');return;}
  button.disabled=true;button.setAttribute('aria-busy','true');report('現在地を取得しています…');
  PHARMACY_PERF.log('location.request','started','現在地取得を開始');
  const end=()=>{button.disabled=false;button.removeAttribute('aria-busy');};
@@ -1476,7 +1555,7 @@ function locateUser(){
   finally{end();}
  },error=>{
   const messages={1:'現在地の利用が許可されていません。ブラウザーの位置情報設定を確認してください。',2:'現在地を確認できませんでした。電波状況を確認して再度お試しください。',3:'現在地取得が時間切れになりました。再度お試しください。'};
-  report(messages[error.code]||'現在地を取得できませんでした。',true);end();PHARMACY_PERF.log('location.result','warning','現在地取得を確認できず',performance.now()-began,{outcome:String(error.code)});
+  report(messages[error.code]||'現在地を取得できませんでした。',true);end();positionFailed();PHARMACY_PERF.log('location.result','warning','現在地取得を確認できず',performance.now()-began,{outcome:String(error.code)});
  },{enableHighAccuracy:false,timeout:12000,maximumAge:60000});
 }
 
@@ -1803,6 +1882,12 @@ def main():
             if not catalog['regions']:st.info('「データ取得・更新」で地域を選び、取得を開始してください。')
             elif not catalog['rates']['basic'] or not catalog['rates']['regional'] or not {'cooperation','digital'}<=catalog['rates'].keys():st.info('「データ取得・更新」内の料金マスタを登録してください。')
             else:
+                # First successful entry into the comparison tab requests geolocation once.
+                # The browser asks for permission; denial keeps the standard region view.
+                if not st.session_state.get('_comparison_initial_location_attempted'):
+                    st.session_state['_comparison_initial_location_attempted']=True
+                    if not st.session_state.get('_comparison_location_coords'):
+                        st.session_state['_comparison_locate_token']=uuid.uuid4().hex
                 ready=st.session_state.get('_comparison_location_ready_token')
                 token=st.session_state.get('_comparison_locate_token')
                 coords=st.session_state.get('_comparison_location_coords')
@@ -1826,11 +1911,14 @@ def main():
                     with right_control:
                         st.markdown('<div class="comparison-control-caption">表示地域</div>',unsafe_allow_html=True)
                         scope=st.selectbox('表示地域',options,key='comparison_scope',label_visibility='collapsed')
-                token=st.session_state.get('_comparison_locate_token')
-                if st.session_state.get('_scope_last')!=scope:
-                    if scope!='現在地周辺':
+                previous_scope=st.session_state.get('_scope_last')
+                if previous_scope!=scope:
+                    # On initial render previous_scope is None.  Do not cancel the
+                    # automatic location request merely because the default area appeared.
+                    if previous_scope is not None and scope!='現在地周辺':
                         st.session_state.pop('_comparison_locate_token',None)
                     log_action('scope.change','比較する地域を変更',{'region':scope});st.session_state['_scope_last']=scope
+                token=st.session_state.get('_comparison_locate_token')
                 try:
                     with trace(audit,'database','dataset.load',{'region':scope}) as result:
                         region=None if scope in ('保存済みの全地域','現在地周辺') else scope
