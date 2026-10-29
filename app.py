@@ -28,7 +28,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-BUILD = '6.7'
+BUILD = '6.8'
 JST = timezone(timedelta(hours=9))
 GOV = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/kijyun.html'
 STATION_API = 'https://express.heartrails.com/api/json'
@@ -865,6 +865,22 @@ window.installPharmacyMonitor=function({scope,project,emitTransport,root=documen
 const frame=document.getElementById('content');let previous='',lastValues={},lastAck=[],monitor=null,documentStart=0,docID='',metadata={};
 const send=(type,extra={})=>parent.postMessage({isStreamlitMessage:true,type,...extra},'*');
 let innerResizeObserver=null,componentHeight=950,lastHeightSent=0;
+let mobileMapViewport='';
+function fitMobileMap(d){
+ try{
+  if(parent.innerWidth>768)return;
+  const wrap=d.querySelector('.map-wrap');if(!wrap)return;
+  const key=docID+':'+parent.innerWidth+':'+parent.innerHeight;
+  if(mobileMapViewport===key)return;
+  const outerTop=window.frameElement?.getBoundingClientRect().top||0;
+  const available=parent.innerHeight-Math.max(0,outerTop)-wrap.getBoundingClientRect().top-58;
+  const height=Math.max(240,Math.min(390,Math.floor(available)));
+  d.documentElement.style.setProperty('--mobile-map-height',height+'px');
+  mobileMapViewport=key;
+  frame.contentWindow.dispatchEvent(new Event('resize'));
+ }catch(e){}
+}
+addEventListener('resize',()=>{mobileMapViewport='';requestAnimationFrame(resizeComparisonComponent);});
 function resizeComparisonComponent(){
  try{
   const d=frame.contentDocument;
@@ -1227,10 +1243,31 @@ button[data-testid="stBaseButton-primary"]:hover,button[kind="primary"]:hover{
 [data-baseweb="checkbox"] svg{color:#fff!important;fill:#fff!important}
 [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *{opacity:1!important;color:#536f60!important;-webkit-text-fill-color:#536f60!important}
 
+/* BUILD 6.8: bring the map into the initial mobile viewport. */
+@media(max-width:768px){
+ .block-container{padding:6px 10px 40px!important}
+ .stMainBlockContainer{padding-top:6px!important}
+ .block-container>[data-testid="stVerticalBlock"]{gap:6px!important}
+ .page-hero{padding:6px 10px!important;margin:0!important;border-radius:10px!important}
+ .page-hero .hero-label{font-size:7px;letter-spacing:1px;line-height:1.3}
+ .page-hero h1{font-size:19px!important;line-height:1.35;margin:2px 0!important}
+ .page-hero p{font-size:10px!important;line-height:1.5}
+ [data-testid="stTabs"] [role="tablist"]{min-height:36px!important;margin:0 0 4px!important;padding:0 0 3px!important}
+ [data-testid="stTabs"] [role="tab"]{min-height:34px!important;padding:6px 3px!important}
+ [data-testid="stTabContent"]{padding-top:0!important}
+ .st-key-comparison_top_controls{margin:0!important}
+ .st-key-comparison_top_controls [data-testid="stVerticalBlock"]{gap:2px!important}
+ .st-key-comparison_top_controls [data-testid="stElementContainer"]:has(.comparison-control-caption){height:18px!important;min-height:18px!important}
+
+ .st-key-comparison_top_controls .comparison-control-caption{height:16px;line-height:16px;margin:0!important;font-size:10px}
+ .st-key-comparison_top_controls .st-key-locate_nearby button,
+ .st-key-comparison_top_controls .st-key-comparison_scope [role="group"]{height:38px!important;min-height:38px!important;max-height:38px!important}
+}
+
 """
 UI_HTML = r"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>薬局比較</title><meta name="description" content="@@REGION@@の薬局を地図と公開料金で比較。"><link rel="stylesheet" href="vendor/leaflet.css"><link rel="stylesheet" href="style.css"></head><body>
 <header><a class="brand" href="#map"><span class="brand-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5a5 5 0 017 7l-4 4a5 5 0 01-7-7l4-4z" stroke="currentColor" stroke-width="2"/><path d="M7 8l7 7" stroke="currentColor" stroke-width="2"/></svg></span><span>薬局比較</span></a><span class="header-note">公開料金で、選択肢が見える。</span><div class="header-right"><span class="live-dot"></span><span>@@REGION@@</span><button class="text-button" id="sourceBtn">データについて ↗</button></div></header>
-<main><section class="workspace"><div class="toolbar"><div class="page-title"><span class="eyebrow">PHARMACY EXPLORER</span><h1>薬局を、地図で比較。</h1></div><div class="tabs" role="tablist" aria-label="表示方法"><button id="mapTab" class="active" role="tab" aria-selected="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 4l5-2 6 2 5-2v14l-5 2-6-2-5 2zM7 2v14M13 4v14"/></svg>地図</button><button id="listTab" role="tab" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4h10M7 10h10M7 16h10M2 4h1M2 10h1M2 16h1"/></svg>価格順の一覧</button></div><div class="toolbar-end"><label class="burden">負担割合 <select id="burden"><option value="0.3">3割</option><option value="0.2">2割</option><option value="0.1">1割</option><option value="1">10割</option></select></label><button id="conditionsBtn" class="condition-button" hidden aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h16M2 15h16M7 2v6M13 12v6"/></svg>比較条件</button></div></div>
+<main><section class="workspace"><div class="toolbar"><div class="page-title"><span class="eyebrow">PHARMACY EXPLORER</span><h1>薬局を、地図で比較。</h1></div><div class="tabs" role="tablist" aria-label="表示方法"><button id="mapTab" class="active" role="tab" aria-selected="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 4l5-2 6 2 5-2v14l-5 2-6-2-5 2zM7 2v14M13 4v14"/></svg>地図</button><button id="listTab" role="tab" aria-selected="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4h10M7 10h10M7 16h10M2 4h1M2 10h1M2 16h1"/></svg>価格順の一覧</button></div><div class="toolbar-end"><label class="burden" hidden aria-hidden="true">負担割合 <select id="burden" tabindex="-1"><option value="0.3">3割</option><option value="0.2">2割</option><option value="0.1">1割</option><option value="1">10割</option></select></label><button id="conditionsBtn" class="condition-button" hidden aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h16M2 15h16M7 2v6M13 12v6"/></svg>比較条件</button></div></div>
 <div class="conditions" id="conditionsPanel" hidden><span class="condition-title">小計に含める料金</span><span class="fixed-condition">② 基本料金</span><label><input type="checkbox" id="regional" checked>③ 地域への薬の供給体制</label><label><input type="checkbox" id="cooperation">③ 災害などへの連携体制</label><label><input type="checkbox" id="digital">③ 電子的な情報連携（月1回）</label><label class="missing-option"><input type="checkbox" id="includeMissing">②または③地域供給が未記載の薬局も表示<span id="missingCount"></span></label></div>
 <div class="scope-note"><span class="scope-tag">比較の範囲</span><span>②の基本料金 ＋ 選択した③の追加料金<span class="scope-desktop">。薬代や説明などの料金は含みません。</span></span><button id="explainBtn" class="text-button">総額とは異なります ⓘ</button></div>
 <div class="content-area"><div class="searchbar"><label class="search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l5 5"/></svg><input id="search" type="search" placeholder="薬局名・町名で検索" aria-label="薬局名・町名で検索"></label><button class="filter-toggle" id="officialFilter" aria-pressed="false">公式サイト照合済み <span id="officialCount">9</span></button><div class="inventory"><span id="allCount">229薬局</span><span class="count" id="resultCount" aria-live="polite"></span></div></div>
@@ -1432,6 +1469,10 @@ body,.workspace,.searchbar,.price-filterbar{background:#fff!important;color:var(
    padding:6px 4px!important;font-size:10px!important;gap:4px!important;justify-content:center}
  .price-filters .price-dot{width:5px;height:5px;flex-shrink:0}
 }
+
+/* The retained 3/10 factor converts amounts; it does not change relative colors. */
+.toolbar{display:none!important}
+@media(max-width:768px){.map-wrap{height:var(--mobile-map-height,370px)!important;min-height:var(--mobile-map-height,370px)!important}}
 
 """
 UI_JS = r"""'use strict';
