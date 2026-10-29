@@ -28,7 +28,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-BUILD = '3.0'
+BUILD = '4.0'
 JST = timezone(timedelta(hours=9))
 GOV = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/kijyun.html'
 STATION_API = 'https://express.heartrails.com/api/json'
@@ -753,22 +753,39 @@ BROWSER_LOG_JS = r"""// 操作内容と描画時間を記録。検索文字列�
  setTimeout(flush,100);
 })();
 """
-OUTER_CSS = r""".block-container{padding:24px 28px 80px!important;max-width:1600px!important;margin-inline:auto!important;box-sizing:border-box!important}
+OUTER_CSS = r"""/* App frame */
+.block-container{padding:24px 28px 80px!important;max-width:1600px!important;margin-inline:auto!important;box-sizing:border-box!important}
 .stMainBlockContainer{padding-top:24px!important}
 header[data-testid="stHeader"],[data-testid="stSidebarCollapsedControl"],footer{display:none}
-[data-testid="stTabs"] [role="tablist"]{display:flex;gap:8px;padding:6px;background:#eef1f8;border:1px solid #dce2ef;border-radius:14px;min-height:60px;margin-bottom:16px;box-sizing:border-box}
-[data-testid="stTabs"] [role="tab"]{flex:1;min-height:46px;padding:12px 20px!important;border:1px solid transparent!important;border-radius:10px!important;color:#475569;font-weight:700;font-size:16px;white-space:nowrap;box-sizing:border-box}
-[data-testid="stTabs"] [role="tab"] p{font-size:16px;font-weight:700}
-[data-testid="stTabs"] [role="tab"][aria-selected="true"]{background:#fff!important;color:#5145cd!important;border-color:#d6d2ff!important;box-shadow:0 2px 6px #24345714}
-[data-testid="stTabContent"]{padding-top:8px}
-@media(max-width:768px){.block-container{padding:16px 14px 72px!important}.stMainBlockContainer{padding-top:16px!important}[data-testid="stTabs"] [role="tablist"]{gap:6px;margin-bottom:12px;min-height:56px}[data-testid="stTabs"] [role="tab"]{padding:11px 10px!important;font-size:14px}[data-testid="stTabs"] [role="tab"] p{font-size:14px}}
-/* 選択中は白いボタンと紫の文字で示す。既定の下線は重ねない。 */
+/* Quiet, light title panel */
+.page-hero{margin:0 0 22px;padding:26px 30px 28px;background:#f7faf9;border:1px solid #e3ebe7;border-radius:16px;color:#233d35}
+.page-hero .hero-label{display:block;padding:0;background:none;color:#55766a;font-size:10px;font-weight:600;letter-spacing:1.8px;line-height:1.6}
+.page-hero h1{margin:10px 0 9px;color:#203b32;font-size:30px;font-weight:700;letter-spacing:.035em;line-height:1.35}
+.page-hero p{margin:0;color:#63736d;font-size:13px;font-weight:400;line-height:1.8}
+/* Flat navigation, one restrained accent */
+[data-testid="stTabs"] [role="tablist"]{display:flex;gap:8px;padding:0 0 7px;background:transparent;border:0;border-bottom:1px solid #e4ebe7;border-radius:0;min-height:48px;margin-bottom:18px;box-sizing:border-box}
+[data-testid="stTabs"] [role="tab"]{flex:0 1 auto;min-height:40px;padding:10px 22px!important;border:1px solid transparent!important;border-radius:8px!important;background:transparent!important;color:#68746e!important;font-size:14px;font-weight:500;white-space:nowrap;box-shadow:none!important;box-sizing:border-box;transition:background-color .15s ease,color .15s ease}
+[data-testid="stTabs"] [role="tab"] p{font-size:14px;font-weight:500}
+[data-testid="stTabs"] [role="tab"]:hover{background:#f3f7f5!important;color:#294f40!important}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"]{background:#edf5f0!important;color:#285d47!important;border-color:#dce9e0!important;box-shadow:none!important}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] p{font-weight:650}
+[data-testid="stTabs"] [role="tab"]:focus-visible{outline:2px solid #6d9c81!important;outline-offset:2px}
 [data-testid="stTabs"] [role="tablist"]::after,[data-testid="stTabs"] [role="tab"]::after{display:none!important}
-.page-hero{margin:0 0 26px;padding:28px 30px 26px;background:#203f39;color:#fff;border-radius:0 0 18px 18px}
-.page-hero .hero-label{display:inline-block;padding:4px 8px;border-radius:12px;background:#ffffff22;font-size:10px;font-weight:700;letter-spacing:1.6px}
-.page-hero h1{margin:14px 0 10px;color:#fff;font-size:32px;line-height:1.3}
-.page-hero p{margin:0;color:#f1f5f4;font-size:14px;line-height:1.7}
-@media(max-width:768px){.page-hero{padding:22px 20px;margin-bottom:20px}.page-hero h1{font-size:28px}[data-testid="stTabs"] [role="tab"]{padding:11px 5px!important}[data-testid="stTabs"] [role="tab"] p{font-size:13px}}
+[data-testid="stTabContent"]{padding-top:0}
+/* Region chooser */
+[data-testid="stSelectbox"]:has(input[aria-label="表示地域"]) label p{color:#66766d;font-size:12px;font-weight:500;letter-spacing:.025em}
+[data-testid="stSelectbox"]:has(input[aria-label="表示地域"]) input{color:#314a3e!important;font-size:14px}
+@media(max-width:768px){
+ .block-container{padding:16px 14px 72px!important}.stMainBlockContainer{padding-top:16px!important}
+ .page-hero{padding:23px 22px 24px;margin-bottom:18px;border-radius:14px}.page-hero h1{font-size:27px}.page-hero p{font-size:12px}
+ [data-testid="stTabs"] [role="tablist"]{gap:5px;min-height:46px;margin-bottom:16px}
+ [data-testid="stTabs"] [role="tab"]{flex:1;min-height:39px;padding:10px 5px!important;font-size:13px}
+ [data-testid="stTabs"] [role="tab"] p{font-size:13px}
+}
+[data-testid="stTabs"] .react-aria-SelectionIndicator{display:none!important}
+[data-testid="stSelectbox"] [role="group"]:has(>input[aria-label="表示地域"]){min-height:44px;background:#fff!important;border:1px solid #dce6df!important;border-radius:10px!important;box-shadow:none!important;transition:border-color .15s ease}
+[data-testid="stSelectbox"] [role="group"]:has(>input[aria-label="表示地域"]):focus-within{border-color:#7b9e8a!important;box-shadow:0 0 0 3px #4d886214!important}
+[data-testid="stSelectbox"] [role="group"]:has(>input[aria-label="表示地域"]) button{background:transparent!important;color:#6c7c73!important}
 """
 UI_HTML = r"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>薬局比較</title><meta name="description" content="@@REGION@@の薬局を地図と公開料金で比較。"><link rel="stylesheet" href="vendor/leaflet.css"><link rel="stylesheet" href="style.css"></head><body>
 <header><a class="brand" href="#map"><span class="brand-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5a5 5 0 017 7l-4 4a5 5 0 01-7-7l4-4z" stroke="currentColor" stroke-width="2"/><path d="M7 8l7 7" stroke="currentColor" stroke-width="2"/></svg></span><span>薬局比較</span></a><span class="header-note">公開料金で、選択肢が見える。</span><div class="header-right"><span class="live-dot"></span><span>@@REGION@@</span><button class="text-button" id="sourceBtn">データについて ↗</button></div></header>
