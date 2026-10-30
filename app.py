@@ -28,7 +28,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-BUILD = '6.8'
+BUILD = '6.9'
 JST = timezone(timedelta(hours=9))
 GOV = 'https://kouseikyoku.mhlw.go.jp/kantoshinetsu/chousa/kijyun.html'
 STATION_API = 'https://express.heartrails.com/api/json'
@@ -873,7 +873,7 @@ function fitMobileMap(d){
   const key=docID+':'+parent.innerWidth+':'+parent.innerHeight;
   if(mobileMapViewport===key)return;
   const outerTop=window.frameElement?.getBoundingClientRect().top||0;
-  const available=parent.innerHeight-Math.max(0,outerTop)-wrap.getBoundingClientRect().top-58;
+  const available=parent.innerHeight-Math.max(0,outerTop)-wrap.getBoundingClientRect().top-82;
   const height=Math.max(240,Math.min(390,Math.floor(available)));
   d.documentElement.style.setProperty('--mobile-map-height',height+'px');
   mobileMapViewport=key;
@@ -1272,10 +1272,10 @@ UI_HTML = r"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta n
 <div class="scope-note"><span class="scope-tag">比較の範囲</span><span>②の基本料金 ＋ 選択した③の追加料金<span class="scope-desktop">。薬代や説明などの料金は含みません。</span></span><button id="explainBtn" class="text-button">総額とは異なります ⓘ</button></div>
 <div class="content-area"><div class="searchbar"><label class="search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l5 5"/></svg><input id="search" type="search" placeholder="薬局名・町名で検索" aria-label="薬局名・町名で検索"></label><button class="filter-toggle" id="officialFilter" aria-pressed="false">公式サイト照合済み <span id="officialCount">9</span></button><div class="inventory"><span id="allCount">229薬局</span><span class="count" id="resultCount" aria-live="polite"></span></div></div>
 
-<div id="mapView" class="map-layout"><div class="map-wrap"><div id="map" aria-label="@@REGION@@の薬局地図"></div><div class="map-top-label"><span class="live-dot"></span> TOKYO <span class="station-key"><b>駅</b>紺色は駅</span></div><div class="map-actions" aria-hidden="true"><button id="locateMap" class="map-reset" type="button" title="現在地を取得して表示"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1v4M10 15v4M1 10h4M15 10h4"/></svg><span>現在地を取得</span></button><button id="resetMap" class="map-reset" title="@@REGION@@全体を表示"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="5"/><path d="M10 1v4M10 15v4M1 10h4M15 10h4"/></svg><span>全体を表示</span></button></div><div id="locationStatus" class="location-status" role="status" hidden></div><div class="map-legend"><div class="gradient-key"><span>低い</span><i class="gradient-scale" aria-label="比較小計が低い青色から高い赤色へのグラデーション"></i><span>高い</span><i class="unknown-key"></i><span>対象外</span></div><div class="legend-note">丸数字を押すと近くの薬局を選べます</div></div><div id="mapError" hidden>背景地図を読み込めません。地図の再読込をお試しください。</div><aside id="detail" class="detail" aria-live="polite"></aside><button id="detailCloseButton" type="button" aria-label="薬局の詳細を閉じる" title="閉じる">×</button></div></div>
-<div class="price-filterbar"><div class="price-filters" role="group" aria-label="料金による絞り込み"><button id="priceAll" class="active" aria-pressed="true">すべて</button><button id="priceLow" aria-pressed="false"><i class="price-dot cheap"></i>安めのみ</button><button id="priceHigh" aria-pressed="false"><i class="price-dot costly"></i>高めのみ</button></div><span class="price-filter-note" id="priceFilterNote"></span><span class="coverage-note" id="coverageNote"></span></div>
+<div id="mapView" class="map-layout"><div class="map-wrap"><div id="map" aria-label="@@REGION@@の薬局地図"></div><div class="map-actions" aria-hidden="true"><button id="locateMap" class="map-reset" type="button" title="現在地を取得して表示"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1v4M10 15v4M1 10h4M15 10h4"/></svg><span>現在地を取得</span></button><button id="resetMap" class="map-reset" title="@@REGION@@全体を表示"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="5"/><path d="M10 1v4M10 15v4M1 10h4M15 10h4"/></svg><span>全体を表示</span></button></div><aside id="detail" class="detail" aria-live="polite"></aside><button id="detailCloseButton" type="button" aria-label="薬局の詳細を閉じる" title="閉じる">×</button></div></div>
+<div class="map-key-outside"><div class="map-legend"><div class="gradient-key"><span>低い</span><i class="gradient-scale" aria-label="比較小計が低い青色から高い赤色へのグラデーション"></i><span>高い</span><i class="unknown-key"></i><span>対象外</span></div></div></div><div class="price-filterbar"><div class="price-filters" role="group" aria-label="料金による絞り込み"><button id="priceAll" class="active" aria-pressed="true">すべて</button><button id="priceLow" aria-pressed="false"><i class="price-dot cheap"></i>安めのみ</button><button id="priceHigh" aria-pressed="false"><i class="price-dot costly"></i>高めのみ</button></div><span class="price-filter-note" id="priceFilterNote"></span><span class="coverage-note" id="coverageNote"></span></div>
 <div id="listView" hidden><div class="list-top"><div><span class="eyebrow">PRICE COMPARISON</span><h2>公開項目を、同じ基準で。</h2><p>同額は同順位。表示額は窓口の総額ではありません。</p></div><label>並び順 <select id="sort"><option value="asc">安い順</option><option value="desc">高い順</option><option value="name">名前順</option></select></label></div><div class="table-scroll"><table class="ranking"><thead><tr><th>順位</th><th>薬局 / 所在地</th><th>② 基本料金</th><th>③ 選択中の追加料金</th><th>比較小計<span id="burdenLabel">（3割換算）</span></th><th>操作</th></tr></thead><tbody id="rankingBody"></tbody></table></div><div class="no-results" id="noResults" hidden>一致する薬局がありません。</div></div></div></section>
-<footer class="footnotes"><span>届出：<span id="sourceDate"></span> ｜ 点数施行：<span id="rateDate"></span></span><span class="footer-extra">公開データに基づく比較・地域ごとに更新</span><button class="text-button" id="exportBtn">CSVを保存 ↓</button></footer></main>
+<div id="locationStatus" class="location-status" role="status" hidden></div><div id="mapError" hidden>背景地図を読み込めません。地図の再読込をお試しください。</div><footer class="footnotes"><span>届出：<span id="sourceDate"></span> ｜ 点数施行：<span id="rateDate"></span></span><span class="footer-extra">公開データに基づく比較・地域ごとに更新</span><button class="text-button" id="exportBtn">CSVを保存 ↓</button></footer></main>
 <div id="compareBar" class="compare-bar" hidden hidden><div><strong id="compareCount">0店舗を選択中</strong><span>最大3店舗を横並びで比較</span></div><button id="clearCompare" class="text-button">解除</button><button id="showCompare" class="primary">比較する →</button></div>
 <dialog id="modal"><div class="modal-header"><h2 id="modalTitle"></h2><button id="closeModal" aria-label="閉じる">×</button></div><div id="modalBody"></div></dialog>
 <script src="vendor/leaflet.js"></script><script src="app.js"></script></body></html>
@@ -1474,6 +1474,19 @@ body,.workspace,.searchbar,.price-filterbar{background:#fff!important;color:var(
 .toolbar{display:none!important}
 @media(max-width:768px){.map-wrap{height:var(--mobile-map-height,370px)!important;min-height:var(--mobile-map-height,370px)!important}}
 
+/* BUILD 6.9: keep explanatory UI outside the map and the store detail. */
+.map-key-outside{order:1;flex:none;padding:5px 8px;background:#fff;border-top:1px solid var(--line)}
+.map-key-outside .map-legend{position:static!important;inset:auto!important;display:block!important;
+ min-width:0;max-width:100%;width:max-content;margin:0;padding:0!important;font-size:9px;
+ background:transparent!important;border:0;border-radius:0;box-shadow:none!important}
+.map-key-outside .gradient-key{gap:7px}
+.map-key-outside .gradient-scale{width:85px;height:5px}
+.price-filterbar{order:2!important}
+.searchbar{order:3!important}
+#locationStatus,#mapError{position:static!important;inset:auto!important;max-width:none!important;
+ margin:6px 8px;padding:7px 9px;font-size:11px;box-shadow:none!important;background:#fff!important}
+@media(max-width:760px){.map-key-outside{padding:4px 6px}.map-key-outside .map-legend{font-size:8px}}
+
 """
 UI_JS = r"""'use strict';
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1549,12 +1562,12 @@ function showNearbyLocation(lat,lon){
  locationMarker=L.marker([lat,lon],{title:'現在地',icon:L.divIcon({className:'current-location',html:'<span aria-label="現在地"></span>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map).bindTooltip('現在地');
  locationCircle=L.circle([lat,lon],{radius:1000,color:'#287bb5',weight:2,fillColor:'#287bb5',fillOpacity:.09,interactive:false}).addTo(map);
  map.fitBounds(locationCircle.getBounds(),{padding:[20,20],maxZoom:16,animate:false});
- const status=$('locationStatus');status.textContent='現在地から半径1kmを表示';status.hidden=false;status.classList.remove('location-error');
+ const status=$('locationStatus');status.textContent='';status.hidden=true;status.classList.remove('location-error');
  return true;
 }
 function locateUser(){
  const button=$('locateMap'),status=$('locationStatus'),began=performance.now();
- const report=(message,error=false)=>{status.textContent=message;status.hidden=!message;status.classList.toggle('location-error',error);};
+ const report=(message,error=false)=>{status.textContent=error?message:'';status.hidden=!error||!message;status.classList.toggle('location-error',error);};
  if(!navigator.geolocation){report('このブラウザーは現在地取得に対応していません。',true);PHARMACY_PERF.log('location.result','warning','現在地取得非対応');return;}
  const token=PHARMACY_BOOTSTRAP.ui_state?.locate_request;
  if(token){try{const key='pharmacy-location-request-'+token;if(sessionStorage.getItem(key))return;sessionStorage.setItem(key,'1');}catch{}}
@@ -1566,7 +1579,7 @@ function locateUser(){
    const lat=pos.coords.latitude,lon=pos.coords.longitude;
    if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)throw new Error('invalid coordinates');
    if(!showNearbyLocation(lat,lon))throw new Error('Cannot render location');
-   report('現在地から半径1kmを表示しました。');
+   report('');
    const token=PHARMACY_BOOTSTRAP.ui_state?.locate_request;
    if(token)parent.postMessage({type:'pharmacy.location',token,latitude:lat,longitude:lon},'*');
    requestAnimationFrame(()=>requestAnimationFrame(()=>PHARMACY_PERF.log('location.result','ok','現在地を地図に表示',performance.now()-began,{duration_kind:'location_request_to_two_frames'})));
